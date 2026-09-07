@@ -118,6 +118,17 @@ class InventoryStore:
                     ON vehicle_events(vehicle_id);
                 """
             )
+            # Migrations for columns added after the initial release.
+            # Safe to run every startup — no-ops once the column exists.
+            self._add_column_if_missing(conn, "vehicles", "torque", "TEXT")
+            self._add_column_if_missing(conn, "vehicles", "towing_capacity", "TEXT")
+            self._add_column_if_missing(conn, "vehicles", "flat_tow", "TEXT")
+            self._add_column_if_missing(conn, "vehicles", "vdp_enriched_at", "TEXT")
+
+    def _add_column_if_missing(self, conn: sqlite3.Connection, table: str, column: str, coltype: str) -> None:
+        cols = [r["name"] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()]
+        if column not in cols:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {coltype}")
 
     # ------------------------------------------------------------------
     # Dealership helpers
@@ -476,6 +487,39 @@ class InventoryStore:
         with self._conn() as conn:
             rows = conn.execute(sql, params).fetchall()
             return [dict(r) for r in rows]
+
+    def fill_vdp_fields(self, vehicle_id: int, data: Dict[str, Any]) -> None:
+        """
+        Fill in stock #/photo/mileage/torque/towing fields pulled from the
+        vehicle detail page — but ONLY where we don't already have a value.
+        Never overwrites something we already trust (e.g. a listing price
+        or a value the list scan already found).
+        """
+        now = _utcnow()
+        with self._conn() as conn:
+            conn.execute(
+                """
+                UPDATE vehicles SET
+                    stock_number = CASE WHEN (stock_number IS NULL OR stock_number = '') THEN ? ELSE stock_number END,
+                    image_url = CASE WHEN (image_url IS NULL OR image_url = '') THEN ? ELSE image_url END,
+                    mileage = CASE WHEN mileage IS NULL THEN ? ELSE mileage END,
+                    torque = CASE WHEN (torque IS NULL OR torque = '') THEN ? ELSE torque END,
+                    towing_capacity = CASE WHEN (towing_capacity IS NULL OR towing_capacity = '') THEN ? ELSE towing_capacity END,
+                    flat_tow = CASE WHEN (flat_tow IS NULL OR flat_tow = '') THEN ? ELSE flat_tow END,
+                    vdp_enriched_at = ?
+                WHERE id = ?
+                """,
+                (
+                    data.get("stock_number"),
+                    data.get("image_url"),
+                    data.get("mileage"),
+                    data.get("torque"),
+                    data.get("towing_capacity"),
+                    data.get("flat_tow"),
+                    now,
+                    vehicle_id,
+                ),
+            )
 
     def get_vehicle(self, vehicle_id: int) -> Optional[Dict[str, Any]]:
         with self._conn() as conn:
