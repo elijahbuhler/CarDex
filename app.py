@@ -11,7 +11,7 @@ from flask import Flask, jsonify, render_template_string, request
 from scraper import InventoryEngine, list_adapters
 from store import InventoryStore
 
-__version__ = "2.1.6-flat"
+__version__ = "2.1.7-flat"
 
 app = Flask(__name__)
 app.config["JSON_SORT_KEYS"] = False
