@@ -11,7 +11,7 @@ from flask import Flask, jsonify, render_template_string, request
 from scraper import InventoryEngine, list_adapters
 from store import InventoryStore
 
-__version__ = "2.1.3-flat"
+__version__ = "2.1.4-flat"
 
 app = Flask(__name__)
 app.config["JSON_SORT_KEYS"] = False
@@ -203,30 +203,39 @@ INDEX_HTML = r"""
       const cls = value != null && value !== "" ? "" : "verify";
       return '<div class="spec"><div class="label">' + label + '</div><div class="value ' + cls + '">' + display + "</div></div>";
     }
-    function buildSales(v) {
+    function buildSales(v, nhtsa) {
       const title = titleOf(v);
       const isNew = (v.condition || "").toLowerCase() === "new";
       const make = (v.make || "").toLowerCase();
       const model = ((v.model || "") + " " + (v.trim || "")).toLowerCase();
+      const hp = (nhtsa && nhtsa.engine_hp) || (v.nhtsa && v.nhtsa.engine_hp);
+      const engine = v.engine;
+      const drive = v.drivetrain || (nhtsa && nhtsa.drivetrain);
       const points = [];
-      if (isNew) points.push("This is a new vehicle — full factory warranty and no previous-owner history to explain.");
+      if (engine) points.push("Engine: " + engine + " — lead with this when they ask about power.");
+      else if (hp) points.push(hp + " horsepower from the factory powertrain.");
+      if (drive) points.push("Drivetrain: " + drive + ".");
+      if (isNew) points.push("New vehicle — full factory warranty, no prior-owner story to defend.");
       if (v.price) points.push("Priced at " + money(v.price) + " on our lot today.");
-      if (make.includes("jeep")) points.push("Jeep brand strength: capability, residual value, and a loyal owner base in this market.");
-      if (make.includes("ram")) points.push("Ram trucks sell on ride quality, towing, and interior comfort.");
-      if (model.includes("grand")) points.push("Grand Cherokee sits in a sweet spot: family-friendly size with real capability.");
-      if (model.includes("wrangler")) points.push("Wrangler is an emotion buy — lifestyle and identity.");
-      if (points.length < 3) points.push("Be ready with payment options and trade appraisal — those close more deals than feature lists.");
+      if (make.includes("jeep")) points.push("Jeep residuals and brand loyalty are strong in this market — use that on value conversations.");
+      if (make.includes("ram")) points.push("Ram sells on ride quality, towing confidence, and interior comfort.");
+      if (model.includes("grand cherokee") || model.includes("grand")) points.push("Grand Cherokee: family size with real capability — a practical yes for most Montana buyers.");
+      if (model.includes("wrangler")) points.push("Wrangler is an emotion buy. Sell the lifestyle; don't over-explain features if they're already grinning.");
+      if (model.includes("1500") || model.includes("2500") || model.includes("3500")) points.push("Confirm their towing/payload needs early so you put them in the right truck the first time.");
+      if (points.length < 4) points.push("Have payment examples and a trade path ready — those close more deals than feature dumps.");
       const objections = [];
-      objections.push("Price — be ready with payment examples and why this unit is priced where it is.");
-      if (make.includes("jeep") || make.includes("ram")) objections.push("Fuel economy — acknowledge it early if they commute long distances; pivot to capability and value.");
-      if (model.includes("wrangler")) objections.push("Daily comfort / noise — be honest about on-road manners; sell the experience.");
-      objections.push("Inventory alternatives — know 1–2 similar units on the lot so you control the comparison.");
-      objections.push("Timing / payment — many customers stall here; have terms ready before you need them.");
+      objections.push("Price — know the payment at a couple of terms before they ask.");
+      if (make.includes("jeep") || make.includes("ram")) objections.push("Fuel economy — acknowledge it, then pivot to capability and what they said they need the vehicle for.");
+      if (model.includes("wrangler")) objections.push("On-road comfort/noise — be honest; sell the experience, not a luxury sedan ride.");
+      objections.push("Flat-tow / towing claims — VERIFY against the exact configuration before you promise anything.");
+      objections.push("Similar units on the lot — know 1–2 alternatives so you control the comparison.");
       let pitch = "This is the " + title + ".";
-      if (v.price) pitch += " It's marked at " + money(v.price) + ".";
+      if (engine) pitch += " It has a " + engine + ".";
+      else if (hp) pitch += " Factory rating is " + hp + " horsepower.";
+      if (v.price) pitch += " Marked at " + money(v.price) + ".";
       if (isNew) pitch += " Brand new, full warranty.";
-      pitch += " What matters most to you on this one — payment, features, or how you'll use it day to day?";
-      return { points: points.slice(0, 5), objections, pitch };
+      pitch += " What's the main job this vehicle needs to do for you?";
+      return { points: points.slice(0, 6), objections, pitch };
     }
     async function openReport(id) {
       showReport();
@@ -239,8 +248,10 @@ INDEX_HTML = r"""
           return;
         }
         const v = data.vehicle;
-        const sales = buildSales(v);
+        const nhtsa = data.nhtsa || v.nhtsa || null;
+        const sales = buildSales(v, nhtsa);
         const title = titleOf(v);
+        const hp = nhtsa && nhtsa.engine_hp ? (nhtsa.engine_hp + " hp") : null;
         const photo = v.image_url
           ? '<div class="report-photo"><img src="' + v.image_url + '" alt="" /></div>'
           : '<div class="report-photo">No photo yet</div>';
@@ -266,9 +277,15 @@ INDEX_HTML = r"""
           specRow("Year", v.year) + specRow("Make", v.make) +
           specRow("Model", v.model) + specRow("Trim", v.trim) +
           '</div>' +
-          '<div class="section-title">Specs (only when verified)</div><div class="grid2">' +
-          specRow("Engine", v.engine) + specRow("Drivetrain", v.drivetrain) +
-          specRow("Transmission", v.transmission) + specRow("Fuel economy", v.fuel_economy) +
+          '<div class="section-title">Specs (NHTSA / listing — VERIFY if blank)</div><div class="grid2">' +
+          specRow("Engine", v.engine) +
+          specRow("Horsepower", hp) +
+          specRow("Drivetrain", v.drivetrain || (nhtsa && nhtsa.drivetrain)) +
+          specRow("Transmission", v.transmission) +
+          specRow("Fuel", (nhtsa && nhtsa.fuel) || v.fuel_economy) +
+          specRow("Body", v.body_style || (nhtsa && nhtsa.body_style)) +
+          specRow("Flat-tow", null) +
+          specRow("Towing capacity", null) +
           '</div>' +
           '<div class="section-title">Best selling points</div>' +
           sales.points.map(function(p){ return '<div class="bullet">' + p + '</div>'; }).join("") +
@@ -361,7 +378,47 @@ def api_vehicle_detail(vehicle_id: int):
     if not vehicle:
         return jsonify({"ok": False, "error": "Vehicle not found"}), 404
     events = store.get_vehicle_events(vehicle_id)
-    return jsonify({"vehicle": vehicle, "events": events})
+
+    # Enrich with public NHTSA VIN decode (factory data, not guesses)
+    nhtsa = None
+    vin = vehicle.get("vin")
+    if vin:
+        try:
+            from vin_decode import decode_vin
+            nhtsa = decode_vin(vin)
+        except Exception:
+            nhtsa = None
+
+    if nhtsa:
+        # Fill blanks only — never overwrite a verified listing value with empty
+        fill_map = {
+            "year": "year",
+            "make": "make",
+            "model": "model",
+            "trim": "trim",
+            "body_style": "body_style",
+            "drivetrain": "drivetrain",
+            "transmission": "transmission",
+            "engine": "engine",
+        }
+        for src, dest in fill_map.items():
+            if nhtsa.get(src) and not vehicle.get(dest):
+                vehicle[dest] = nhtsa[src]
+        # Title-case make for display
+        if vehicle.get("make"):
+            vehicle["make"] = str(vehicle["make"]).title()
+        vehicle["nhtsa"] = {
+            "engine_hp": nhtsa.get("engine_hp"),
+            "engine_displacement_l": nhtsa.get("engine_displacement_l"),
+            "engine_cylinders": nhtsa.get("engine_cylinders"),
+            "engine_configuration": nhtsa.get("engine_configuration"),
+            "fuel": nhtsa.get("fuel"),
+            "drivetrain": nhtsa.get("drivetrain"),
+            "body_style": nhtsa.get("body_style"),
+            "source": "NHTSA vPIC",
+        }
+
+    return jsonify({"vehicle": vehicle, "events": events, "nhtsa": nhtsa})
 
 
 @app.get("/api/search")
