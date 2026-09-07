@@ -11,7 +11,7 @@ from flask import Flask, jsonify, render_template_string, request
 from scraper import InventoryEngine, list_adapters
 from store import InventoryStore
 
-__version__ = "2.1.5-flat"
+__version__ = "2.1.6-flat"
 
 app = Flask(__name__)
 app.config["JSON_SORT_KEYS"] = False
@@ -98,6 +98,7 @@ INDEX_HTML = r"""
         </div>
         <div class="actions">
           <button class="secondary" id="btn-scan" onclick="doScan()">Scan Lithia Missoula Inventory</button>
+          <button class="secondary" id="btn-backfill" onclick="doBackfill()">Backfill missing info</button>
           <button class="secondary" onclick="loadAll()">Show all saved</button>
         </div>
         <div class="status" id="status"></div>
@@ -185,6 +186,30 @@ INDEX_HTML = r"""
         }
       } catch (e) { setStatus("Scan failed — " + e.message, "err"); }
       document.getElementById("btn-scan").disabled = false;
+    }
+    async function doBackfill() {
+      setStatus("Backfilling missing year/make/model from NHTSA…");
+      document.getElementById("btn-backfill").disabled = true;
+      let totalUpdated = 0;
+      try {
+        while (true) {
+          const r = await fetch("/api/backfill_nhtsa", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ limit: 40 })
+          });
+          const data = await r.json();
+          if (!data.ok) { setStatus("Backfill problem: " + (data.error || "unknown"), "err"); break; }
+          totalUpdated += data.updated;
+          if (data.checked === 0) {
+            setStatus(totalUpdated ? ("Backfill complete — updated " + totalUpdated + " vehicle(s)") : "Nothing needed backfilling", "ok");
+            break;
+          }
+          setStatus("Backfilled " + totalUpdated + " so far — " + data.remaining + " left…");
+        }
+      } catch (e) { setStatus("Backfill failed — " + e.message, "err"); }
+      document.getElementById("btn-backfill").disabled = false;
+      await loadAll();
     }
     function showList() {
       reportView.style.display = "none";
@@ -348,6 +373,44 @@ def api_discover():
         return jsonify({"ok": False, "error": "inventory_url is required"}), 400
     result = engine.discover(url, dealership_name=name, force=force)
     return jsonify(result), (200 if result.get("ok") else 400)
+
+
+@app.post("/api/backfill_nhtsa")
+def api_backfill_nhtsa():
+    """
+    Find active vehicles with a VIN but missing year/make/model and
+    permanently fill them in from NHTSA. Processes a small batch per call
+    (so it stays well under the request timeout) — the front-end calls
+    this in a loop until nothing is left.
+    """
+    import time as _time
+    data = request.get_json(silent=True) or {}
+    limit = data.get("limit") or request.args.get("limit", 40, type=int) or 40
+    limit = max(1, min(int(limit), 100))
+
+    candidates = store.vehicles_missing_ymm(limit=limit)
+    updated = 0
+    for row in candidates:
+        vin = row.get("vin")
+        if not vin:
+            continue
+        try:
+            from vin_decode import decode_vin
+            nhtsa = decode_vin(vin)
+        except Exception:
+            nhtsa = None
+        if nhtsa:
+            store.fill_nhtsa_fields(row["id"], nhtsa)
+            updated += 1
+        _time.sleep(0.15)  # polite pause between public NHTSA calls
+
+    remaining = store.count_missing_ymm()
+    return jsonify({
+        "ok": True,
+        "checked": len(candidates),
+        "updated": updated,
+        "remaining": remaining,
+    })
 
 
 @app.get("/api/vehicles")
