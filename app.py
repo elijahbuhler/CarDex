@@ -11,7 +11,7 @@ from flask import Flask, jsonify, render_template_string, request
 from scraper import InventoryEngine, list_adapters
 from store import InventoryStore
 
-__version__ = "2.1.1-flat"
+__version__ = "2.1.2-flat"
 
 app = Flask(__name__)
 app.config["JSON_SORT_KEYS"] = False
@@ -224,11 +224,13 @@ INDEX_HTML = """
       setStatus("Searching…");
       document.getElementById("btn-search").disabled = true;
       try {
-        const url = q ? "/api/vehicles?q=" + encodeURIComponent(q) : "/api/vehicles";
+        let url = "/api/vehicles?limit=500";
+        if (q) url += "&q=" + encodeURIComponent(q);
         const r = await fetch(url);
         const data = await r.json();
         renderVehicles(data.vehicles || []);
-        setStatus((data.count || 0) + " vehicle(s)", "ok");
+        const total = (data.summary && data.summary.active) || data.count || 0;
+        setStatus(total + " vehicle(s)", "ok");
       } catch (e) {
         setStatus("Search failed", "err");
       }
