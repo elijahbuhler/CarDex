@@ -73,33 +73,32 @@ class DealerComAdapter(BaseAdapter):
 
     def discover_vehicles(self, inventory_url: str) -> List[VehicleRecord]:
         """
-        Dealer.com inventory is often paginated with ?start=0, ?start=24, etc.
-        We walk pages until we stop finding new vehicles (or hit a safety limit).
+        Dealer.com inventory is paginated with ?start=0, ?start=24, etc.
+        Walk every page until we have the full public inventory.
         """
+        import time
+        import re
+        from urllib.parse import urlparse, urlunparse
+
         session = self._session()
         generic = GenericAdapter()
         records: List[VehicleRecord] = []
-        seen_vins: set = set()
-
-        # Base URL without query string for pagination
-        from urllib.parse import urlparse, urlunparse, parse_qs, urlencode
+        seen_keys: set = set()
 
         parsed = urlparse(inventory_url)
         base_no_query = urlunparse((parsed.scheme, parsed.netloc, parsed.path, "", "", ""))
 
         page_size = 24
-        max_pages = 15  # safety: ~360 vehicles max for now
+        max_pages = 20  # enough for ~480 vehicles
         empty_streak = 0
+        total_expected = None
 
         for page in range(max_pages):
             start = page * page_size
-            if page == 0:
-                page_url = inventory_url
-            else:
-                page_url = f"{base_no_query}?start={start}"
+            page_url = inventory_url if page == 0 else f"{base_no_query}?start={start}"
 
             try:
-                resp = session.get(page_url, timeout=30)
+                resp = session.get(page_url, timeout=25)
                 if resp.status_code != 200:
                     break
             except requests.RequestException:
@@ -107,24 +106,38 @@ class DealerComAdapter(BaseAdapter):
 
             html = resp.text
             soup = BeautifulSoup(html, "lxml")
+
+            # Detect total count once from the first page
+            if total_expected is None:
+                m = re.search(r'totalCount["\s:]+(\d+)', html)
+                if m:
+                    total_expected = int(m.group(1))
+                else:
+                    m2 = re.search(r'inventory of\s+(\d+)', html, re.I)
+                    if m2:
+                        total_expected = int(m2.group(1))
+
+            # Parse this page's HTML directly (no extra network call)
             page_records: List[VehicleRecord] = []
-
-            # JSON-LD + embedded vehicle blobs (via Generic)
-            page_records.extend(generic.discover_vehicles(page_url))
-
-            # data-* attributes
+            page_records.extend(generic._from_embedded_vehicle_blobs(html, page_url))
+            for script in soup.find_all("script", type="application/ld+json"):
+                try:
+                    data = json.loads(script.string or "")
+                except (json.JSONDecodeError, TypeError):
+                    continue
+                for item in generic._walk_jsonld(data):
+                    rec = generic._from_jsonld(item, page_url)
+                    if rec and rec.is_minimally_valid():
+                        page_records.append(rec)
             page_records.extend(self._from_data_attributes(soup, page_url))
-
-            # embedded JSON
             page_records.extend(self._from_embedded_json(html, page_url))
 
             new_on_page = 0
             for r in page_records:
-                vin = (r.vin or "").upper()
-                key = vin or (r.listing_url or "") or (r.stock_number or "")
-                if not key or key in seen_vins:
+                key = (r.vin or "").upper() or (r.listing_url or "") or (r.stock_number or "")
+                if not key or key in seen_keys:
                     continue
-                seen_vins.add(key)
+                seen_keys.add(key)
                 records.append(r)
                 new_on_page += 1
 
@@ -135,9 +148,10 @@ class DealerComAdapter(BaseAdapter):
             else:
                 empty_streak = 0
 
-            # Be polite between pages
-            import time
-            time.sleep(0.6)
+            if total_expected and len(records) >= total_expected:
+                break
+
+            time.sleep(0.35)
 
         return self._dedupe(records)
 
