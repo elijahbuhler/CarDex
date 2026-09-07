@@ -521,6 +521,60 @@ class InventoryStore:
                 ),
             )
 
+    def vehicles_missing_ymm(self, limit: int = 40) -> List[Dict[str, Any]]:
+        """Active vehicles that have a VIN but are missing year/make/model."""
+        with self._conn() as conn:
+            rows = conn.execute(
+                """
+                SELECT id, vin FROM vehicles
+                WHERE is_active = 1 AND vin IS NOT NULL AND vin != ''
+                  AND (year IS NULL OR make IS NULL OR make = '' OR model IS NULL OR model = '')
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+            return [dict(r) for r in rows]
+
+    def count_missing_ymm(self) -> int:
+        with self._conn() as conn:
+            row = conn.execute(
+                """
+                SELECT COUNT(*) FROM vehicles
+                WHERE is_active = 1 AND vin IS NOT NULL AND vin != ''
+                  AND (year IS NULL OR make IS NULL OR make = '' OR model IS NULL OR model = '')
+                """
+            ).fetchone()
+            return int(row[0])
+
+    def fill_nhtsa_fields(self, vehicle_id: int, nhtsa: Dict[str, Any]) -> None:
+        """Permanently fill year/make/model/trim/etc. from NHTSA — blanks only."""
+        with self._conn() as conn:
+            conn.execute(
+                """
+                UPDATE vehicles SET
+                    year = CASE WHEN year IS NULL THEN ? ELSE year END,
+                    make = CASE WHEN (make IS NULL OR make = '') THEN ? ELSE make END,
+                    model = CASE WHEN (model IS NULL OR model = '') THEN ? ELSE model END,
+                    trim = CASE WHEN (trim IS NULL OR trim = '') THEN ? ELSE trim END,
+                    body_style = CASE WHEN (body_style IS NULL OR body_style = '') THEN ? ELSE body_style END,
+                    drivetrain = CASE WHEN (drivetrain IS NULL OR drivetrain = '') THEN ? ELSE drivetrain END,
+                    transmission = CASE WHEN (transmission IS NULL OR transmission = '') THEN ? ELSE transmission END,
+                    engine = CASE WHEN (engine IS NULL OR engine = '') THEN ? ELSE engine END
+                WHERE id = ?
+                """,
+                (
+                    nhtsa.get("year"),
+                    nhtsa.get("make"),
+                    nhtsa.get("model"),
+                    nhtsa.get("trim"),
+                    nhtsa.get("body_style"),
+                    nhtsa.get("drivetrain"),
+                    nhtsa.get("transmission"),
+                    nhtsa.get("engine"),
+                    vehicle_id,
+                ),
+            )
+
     def get_vehicle(self, vehicle_id: int) -> Optional[Dict[str, Any]]:
         with self._conn() as conn:
             row = conn.execute(
