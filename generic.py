@@ -28,6 +28,44 @@ class GenericAdapter(BaseAdapter):
         "respects robots.txt)"
     )
 
+    # Multi-word model names that must not be truncated to their first word.
+    # Checked longest-first so e.g. "Grand Cherokee L" wins over "Grand Cherokee".
+    # Only true model-line names here — trims/packages (Rubicon, SRT, Laredo,
+    # Daytona, etc.) stay out, or "Model Trim" pairs would misparse as models.
+    KNOWN_MULTI_WORD_MODELS = sorted(
+        [
+            "grand cherokee l", "grand cherokee 4xe", "grand cherokee",
+            "grand wagoneer l", "grand wagoneer",
+            "wrangler unlimited", "wrangler 4xe",
+            "pacifica hybrid",
+        ],
+        key=len,
+        reverse=True,
+    )
+
+    def _split_model_trim(self, rest: str):
+        """
+        Split "<model> <trim...>" text conservatively. Uses known Jeep/Ram/
+        Dodge/Chrysler multi-word model names so e.g. "Grand Cherokee L
+        Laredo" doesn't get truncated to model="Grand", trim="Cherokee L
+        Laredo". Requires a word boundary after the match (so "Grand
+        Cherokee L" doesn't false-match inside "Grand Cherokee Laredo").
+        Falls back to first-word split for anything unrecognized.
+        """
+        rest = (rest or "").strip()
+        if not rest:
+            return None, None
+        rest_lower = rest.lower()
+        for km in self.KNOWN_MULTI_WORD_MODELS:
+            if rest_lower == km or rest_lower.startswith(km + " "):
+                model = rest[: len(km)]
+                trim = rest[len(km):].strip() or None
+                return model, trim
+        parts = rest.split()
+        model = parts[0] if parts else None
+        trim = " ".join(parts[1:]) if len(parts) > 1 else None
+        return model, trim
+
     @classmethod
     def can_handle(cls, inventory_url: str) -> bool:
         # Always available as fallback
@@ -155,11 +193,7 @@ class GenericAdapter(BaseAdapter):
                         rec.year = self.normalize_year(ym.group(1))
                         rec.make = ym.group(2)
                         rest = ym.group(3).strip()
-                        # crude model/trim split
-                        parts = rest.split()
-                        rec.model = parts[0] if parts else None
-                        if len(parts) > 1:
-                            rec.trim = " ".join(parts[1:])
+                        rec.model, rec.trim = self._split_model_trim(rest)
                 if rec.is_minimally_valid():
                     records.append(rec)
                 continue
@@ -212,24 +246,11 @@ class GenericAdapter(BaseAdapter):
                 year = year or self.normalize_year(m.group(1))
                 make = make or m.group(2)
                 rest = m.group(3).strip()
-                known_multi = [
-                    "grand cherokee", "grand wagoneer", "wrangler unlimited",
-                    "ram 1500", "ram 2500", "ram 3500",
-                ]
-                rest_lower = rest.lower()
-                matched_model = None
-                for km in known_multi:
-                    if rest_lower.startswith(km):
-                        matched_model = rest[: len(km)]
-                        trim = rest[len(km):].strip() or None
-                        break
-                if matched_model:
-                    model = model or matched_model
-                else:
-                    parts = rest.split()
-                    model = model or (parts[0] if parts else None)
-                    if len(parts) > 1 and not trim:
-                        trim = " ".join(parts[1:])
+                if not model:
+                    parsed_model, parsed_trim = self._split_model_trim(rest)
+                    model = parsed_model
+                    if not trim:
+                        trim = parsed_trim
             if not condition and name:
                 nl = name.lower()
                 if nl.startswith("new"):
