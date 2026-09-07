@@ -72,36 +72,73 @@ class DealerComAdapter(BaseAdapter):
         return s
 
     def discover_vehicles(self, inventory_url: str) -> List[VehicleRecord]:
+        """
+        Dealer.com inventory is often paginated with ?start=0, ?start=24, etc.
+        We walk pages until we stop finding new vehicles (or hit a safety limit).
+        """
         session = self._session()
-        try:
-            resp = session.get(inventory_url, timeout=30)
-            resp.raise_for_status()
-        except requests.RequestException:
-            return []
-
-        html = resp.text
-        soup = BeautifulSoup(html, "lxml")
-        records: List[VehicleRecord] = []
-
-        # --- Strategy 1: JSON-LD (often present on Dealer.com) ---
         generic = GenericAdapter()
-        records.extend(generic.discover_vehicles(inventory_url))
+        records: List[VehicleRecord] = []
+        seen_vins: set = set()
 
-        # --- Strategy 2: data-* attributes common on Dealer.com cards ---
-        records.extend(self._from_data_attributes(soup, inventory_url))
+        # Base URL without query string for pagination
+        from urllib.parse import urlparse, urlunparse, parse_qs, urlencode
 
-        # --- Strategy 3: embedded window.__INITIAL_STATE__ or similar ---
-        records.extend(self._from_embedded_json(html, inventory_url))
+        parsed = urlparse(inventory_url)
+        base_no_query = urlunparse((parsed.scheme, parsed.netloc, parsed.path, "", "", ""))
 
-        # --- Strategy 4: collect VDP (vehicle detail page) links and parse lightly ---
-        vdp_links = self._find_vdp_links(soup, inventory_url)
-        # Limit detail fetches to avoid hammering the site
-        for link in vdp_links[:40]:
-            detail = self._fetch_vdp_light(session, link)
-            if detail and detail.is_minimally_valid():
-                records.append(detail)
+        page_size = 24
+        max_pages = 15  # safety: ~360 vehicles max for now
+        empty_streak = 0
 
-        # Deduplicate
+        for page in range(max_pages):
+            start = page * page_size
+            if page == 0:
+                page_url = inventory_url
+            else:
+                page_url = f"{base_no_query}?start={start}"
+
+            try:
+                resp = session.get(page_url, timeout=30)
+                if resp.status_code != 200:
+                    break
+            except requests.RequestException:
+                break
+
+            html = resp.text
+            soup = BeautifulSoup(html, "lxml")
+            page_records: List[VehicleRecord] = []
+
+            # JSON-LD + embedded vehicle blobs (via Generic)
+            page_records.extend(generic.discover_vehicles(page_url))
+
+            # data-* attributes
+            page_records.extend(self._from_data_attributes(soup, page_url))
+
+            # embedded JSON
+            page_records.extend(self._from_embedded_json(html, page_url))
+
+            new_on_page = 0
+            for r in page_records:
+                vin = (r.vin or "").upper()
+                key = vin or (r.listing_url or "") or (r.stock_number or "")
+                if not key or key in seen_vins:
+                    continue
+                seen_vins.add(key)
+                records.append(r)
+                new_on_page += 1
+
+            if new_on_page == 0:
+                empty_streak += 1
+                if empty_streak >= 2:
+                    break
+            else:
+                empty_streak = 0
+
+            # Be polite between pages
+            import time
+            time.sleep(0.6)
+
         return self._dedupe(records)
 
     def _from_data_attributes(self, soup: BeautifulSoup, base_url: str) -> List[VehicleRecord]:
