@@ -11,7 +11,7 @@ from flask import Flask, jsonify, render_template_string, request
 from scraper import InventoryEngine, list_adapters
 from store import InventoryStore
 
-__version__ = "2.1.4-flat"
+__version__ = "2.1.5-flat"
 
 app = Flask(__name__)
 app.config["JSON_SORT_KEYS"] = False
@@ -284,8 +284,9 @@ INDEX_HTML = r"""
           specRow("Transmission", v.transmission) +
           specRow("Fuel", (nhtsa && nhtsa.fuel) || v.fuel_economy) +
           specRow("Body", v.body_style || (nhtsa && nhtsa.body_style)) +
-          specRow("Flat-tow", null) +
-          specRow("Towing capacity", null) +
+          specRow("Torque", v.torque) +
+          specRow("Flat-tow", v.flat_tow) +
+          specRow("Towing capacity", v.towing_capacity) +
           '</div>' +
           '<div class="section-title">Best selling points</div>' +
           sales.points.map(function(p){ return '<div class="bullet">' + p + '</div>'; }).join("") +
@@ -417,6 +418,28 @@ def api_vehicle_detail(vehicle_id: int):
             "body_style": nhtsa.get("body_style"),
             "source": "NHTSA vPIC",
         }
+
+    # Enrich blanks (stock #, photo, mileage, torque, towing) from the
+    # vehicle's own detail page on the dealer site. Only runs when
+    # something is actually still missing, or when explicitly refreshed.
+    force_vdp = request.args.get("refresh_vdp") == "1"
+    still_missing = not all([
+        vehicle.get("stock_number"),
+        vehicle.get("image_url"),
+        vehicle.get("mileage"),
+        vehicle.get("torque"),
+    ])
+    if (force_vdp or still_missing) and vehicle.get("listing_url"):
+        try:
+            from vdp_scraper import scrape_vdp
+            vdp_data = scrape_vdp(vehicle["listing_url"])
+        except Exception:
+            vdp_data = {}
+        if vdp_data:
+            store.fill_vdp_fields(vehicle_id, vdp_data)
+            for f in ("stock_number", "image_url", "mileage", "torque", "towing_capacity", "flat_tow"):
+                if vdp_data.get(f) and not vehicle.get(f):
+                    vehicle[f] = vdp_data[f]
 
     return jsonify({"vehicle": vehicle, "events": events, "nhtsa": nhtsa})
 
