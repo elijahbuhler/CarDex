@@ -10,8 +10,9 @@ from flask import Flask, jsonify, render_template_string, request
 
 from scraper import InventoryEngine, list_adapters
 from store import InventoryStore
+from sales_brain import build_sales_brain
 
-__version__ = "2.1.7-flat"
+__version__ = "2.2.0-sales-brain"
 
 app = Flask(__name__)
 app.config["JSON_SORT_KEYS"] = False
@@ -229,39 +230,17 @@ INDEX_HTML = r"""
       return '<div class="spec"><div class="label">' + label + '</div><div class="value ' + cls + '">' + display + "</div></div>";
     }
     function buildSales(v, nhtsa) {
-      const title = titleOf(v);
-      const isNew = (v.condition || "").toLowerCase() === "new";
-      const make = (v.make || "").toLowerCase();
-      const model = ((v.model || "") + " " + (v.trim || "")).toLowerCase();
-      const hp = (nhtsa && nhtsa.engine_hp) || (v.nhtsa && v.nhtsa.engine_hp);
-      const engine = v.engine;
-      const drive = v.drivetrain || (nhtsa && nhtsa.drivetrain);
-      const points = [];
-      if (engine) points.push("Engine: " + engine + " — lead with this when they ask about power.");
-      else if (hp) points.push(hp + " horsepower from the factory powertrain.");
-      if (drive) points.push("Drivetrain: " + drive + ".");
-      if (isNew) points.push("New vehicle — full factory warranty, no prior-owner story to defend.");
-      if (v.price) points.push("Priced at " + money(v.price) + " on our lot today.");
-      if (make.includes("jeep")) points.push("Jeep residuals and brand loyalty are strong in this market — use that on value conversations.");
-      if (make.includes("ram")) points.push("Ram sells on ride quality, towing confidence, and interior comfort.");
-      if (model.includes("grand cherokee") || model.includes("grand")) points.push("Grand Cherokee: family size with real capability — a practical yes for most Montana buyers.");
-      if (model.includes("wrangler")) points.push("Wrangler is an emotion buy. Sell the lifestyle; don't over-explain features if they're already grinning.");
-      if (model.includes("1500") || model.includes("2500") || model.includes("3500")) points.push("Confirm their towing/payload needs early so you put them in the right truck the first time.");
-      if (points.length < 4) points.push("Have payment examples and a trade path ready — those close more deals than feature dumps.");
-      const objections = [];
-      objections.push("Price — know the payment at a couple of terms before they ask.");
-      if (make.includes("jeep") || make.includes("ram")) objections.push("Fuel economy — acknowledge it, then pivot to capability and what they said they need the vehicle for.");
-      if (model.includes("wrangler")) objections.push("On-road comfort/noise — be honest; sell the experience, not a luxury sedan ride.");
-      objections.push("Flat-tow / towing claims — VERIFY against the exact configuration before you promise anything.");
-      objections.push("Similar units on the lot — know 1–2 alternatives so you control the comparison.");
-      let pitch = "This is the " + title + ".";
-      if (engine) pitch += " It has a " + engine + ".";
-      else if (hp) pitch += " Factory rating is " + hp + " horsepower.";
-      if (v.price) pitch += " Marked at " + money(v.price) + ".";
-      if (isNew) pitch += " Brand new, full warranty.";
-      pitch += " What's the main job this vehicle needs to do for you?";
-      return { points: points.slice(0, 6), objections, pitch };
+      const raw = (v.sales_brain || {});
+      const fallback = raw.fallback || {};
+      const resolved = raw.resolved || {};
+      const competitors = raw.competitors || [];
+      const points = raw.points || [];
+      const objections = raw.objections || [];
+      const questions = raw.questions || [];
+      const demo = raw.demo || [];
+      return { points, objections, pitch: raw.pitch || "", competitors, questions, demo, fallback, resolved };
     }
+
     async function openReport(id) {
       showReport();
       reportBody.innerHTML = '<div class="empty">Loading report…</div>';
@@ -276,7 +255,11 @@ INDEX_HTML = r"""
         const nhtsa = data.nhtsa || v.nhtsa || null;
         const sales = buildSales(v, nhtsa);
         const title = titleOf(v);
-        const hp = nhtsa && nhtsa.engine_hp ? (nhtsa.engine_hp + " hp") : null;
+        const hpValue = v.nhtsa && v.nhtsa.engine_hp ? v.nhtsa.engine_hp : (sales.resolved && sales.resolved.engine_hp);
+        const hp = hpValue ? (hpValue + " hp") : null;
+        const engineValue = v.engine || (sales.resolved && sales.resolved.engine);
+        const torqueValue = v.torque || (sales.resolved && sales.resolved.torque);
+        const bodyValue = v.body_style || (nhtsa && nhtsa.body_style) || (sales.resolved && sales.resolved.body_style);
         const photo = v.image_url
           ? '<div class="report-photo"><img src="' + v.image_url + '" alt="" /></div>'
           : '<div class="report-photo">No photo yet</div>';
@@ -303,19 +286,25 @@ INDEX_HTML = r"""
           specRow("Model", v.model) + specRow("Trim", v.trim) +
           '</div>' +
           '<div class="section-title">Specs (NHTSA / listing — VERIFY if blank)</div><div class="grid2">' +
-          specRow("Engine", v.engine) +
+          specRow("Engine", engineValue) +
           specRow("Horsepower", hp) +
           specRow("Drivetrain", v.drivetrain || (nhtsa && nhtsa.drivetrain)) +
           specRow("Transmission", v.transmission) +
           specRow("Fuel", (nhtsa && nhtsa.fuel) || v.fuel_economy) +
-          specRow("Body", v.body_style || (nhtsa && nhtsa.body_style)) +
-          specRow("Torque", v.torque) +
+          specRow("Body", bodyValue) +
+          specRow("Torque", torqueValue) +
           specRow("Flat-tow", v.flat_tow) +
           specRow("Towing capacity", v.towing_capacity) +
           '</div>' +
           '<div class="section-title">Best selling points</div>' +
           sales.points.map(function(p){ return '<div class="bullet">' + p + '</div>'; }).join("") +
+          (sales.fallback && sales.fallback.source ? '<div class="section-title">Smart fallback</div><div class="pitch">A listing/VIN-specific value was unavailable, so CarDex used high-confidence same-year/model knowledge for stable facts only. Configuration-dependent specs are still marked VERIFY.</div>' : '') +
+          (sales.competitors.length ? '<div class="section-title">Competitive edge</div>' + sales.competitors.map(function(c){ return '<div class="bullet"><strong>' + c.name + '</strong><br>' + c.angle + '</div>'; }).join("") : '') +
           '<div class="section-title">Customer pitch</div><div class="pitch">' + sales.pitch + '</div>' +
+          '<div class="section-title">Questions to ask</div>' +
+          sales.questions.map(function(p){ return '<div class="bullet">' + p + '</div>'; }).join("") +
+          '<div class="section-title">Test-drive / demo focus</div>' +
+          sales.demo.map(function(p){ return '<div class="bullet">' + p + '</div>'; }).join("") +
           '<div class="section-title">Know before you sell</div>' +
           sales.objections.map(function(p){ return '<div class="bullet warn">' + p + '</div>'; }).join("");
       } catch (e) {
@@ -443,7 +432,7 @@ def api_vehicle_detail(vehicle_id: int):
         return jsonify({"ok": False, "error": "Vehicle not found"}), 404
     events = store.get_vehicle_events(vehicle_id)
 
-    # Enrich with public NHTSA VIN decode (factory data, not guesses)
+    # Enrich with public NHTSA VIN decode (factory/manufacturer-submitted data).
     nhtsa = None
     vin = vehicle.get("vin")
     if vin:
@@ -454,7 +443,6 @@ def api_vehicle_detail(vehicle_id: int):
             nhtsa = None
 
     if nhtsa:
-        # Fill blanks only — never overwrite a verified listing value with empty
         fill_map = {
             "year": "year",
             "make": "make",
@@ -468,7 +456,6 @@ def api_vehicle_detail(vehicle_id: int):
         for src, dest in fill_map.items():
             if nhtsa.get(src) and not vehicle.get(dest):
                 vehicle[dest] = nhtsa[src]
-        # Title-case make for display
         if vehicle.get("make"):
             vehicle["make"] = str(vehicle["make"]).title()
         vehicle["nhtsa"] = {
@@ -482,9 +469,7 @@ def api_vehicle_detail(vehicle_id: int):
             "source": "NHTSA vPIC",
         }
 
-    # Enrich blanks (stock #, photo, mileage, torque, towing) from the
-    # vehicle's own detail page on the dealer site. Only runs when
-    # something is actually still missing, or when explicitly refreshed.
+    # Enrich blanks from the vehicle's own public detail page.
     force_vdp = request.args.get("refresh_vdp") == "1"
     still_missing = not all([
         vehicle.get("stock_number"),
@@ -504,7 +489,16 @@ def api_vehicle_detail(vehicle_id: int):
                 if vdp_data.get(f) and not vehicle.get(f):
                     vehicle[f] = vdp_data[f]
 
+    # Sales Brain: exact vehicle data first, then conservative same-year/model
+    # fallback for stable model-level facts only. No guessing of trim-specific
+    # towing, flat-tow, or configuration-dependent features.
+    try:
+        vehicle["sales_brain"] = build_sales_brain(vehicle, nhtsa)
+    except Exception:
+        vehicle["sales_brain"] = {}
+
     return jsonify({"vehicle": vehicle, "events": events, "nhtsa": nhtsa})
+
 
 
 @app.get("/api/search")
