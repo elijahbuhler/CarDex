@@ -342,10 +342,42 @@ def resolve_fallbacks(vehicle: Dict[str, Any], nhtsa: Optional[Dict[str, Any]]) 
 
 
 def competitor_list(vehicle: Dict[str, Any]) -> List[str]:
-    key = f"{_clean(vehicle.get('make'))} {_normalize_model(vehicle.get('make'), vehicle.get('model'), vehicle.get('trim'))}".strip()
+    """Return comparison models for every vehicle, including used inventory.
+
+    Comparisons are intentionally model-level. If an exact make/model pair is
+    not in COMPETITORS yet, choose a sensible same-class cross-shop set rather
+    than hiding the entire Competitive Intelligence section.
+    """
+    make = _clean(vehicle.get("make"))
+    model = _normalize_model(vehicle.get("make"), vehicle.get("model"), vehicle.get("trim"))
+    key = f"{make} {model}".strip()
     if key in COMPETITORS:
         return COMPETITORS[key]
-    return []
+
+    text = f"{make} {model}"
+    # Full-size / heavy-duty pickups
+    if any(x in text for x in ("2500", "3500", "f-250", "f-350", "silverado 2500", "silverado 3500", "sierra 2500", "sierra 3500")):
+        return ["Ford F-250", "Chevrolet Silverado 2500HD", "GMC Sierra 2500HD"]
+    if any(x in text for x in ("1500", "f-150", "silverado 1500", "sierra 1500", "tundra", "titan")):
+        return ["Ford F-150", "Chevrolet Silverado 1500", "GMC Sierra 1500"]
+    # Midsize pickups
+    if any(x in text for x in ("ranger", "tacoma", "colorado", "canyon", "frontier", "gladiator")):
+        return ["Ford Ranger", "Toyota Tacoma", "Chevrolet Colorado"]
+    # Three-row SUVs / family SUVs
+    if any(x in text for x in ("grand cherokee l", "explorer", "highlander", "pilot", "traverse", "grand highlander", "telluride", "palisade", "atlas", "pathfinder", "durango", "acadia", "cx-90", "cx-9")):
+        return ["Ford Explorer", "Toyota Highlander", "Honda Pilot"]
+    # Off-road / body-on-frame SUVs
+    if any(x in text for x in ("4runner", "bronco", "wrangler", "sequoia", "armada", "gx", "gladiator")):
+        return ["Toyota 4Runner", "Ford Bronco", "Jeep Wrangler"]
+    # Compact / midsize crossover set
+    if any(x in text for x in ("cr-v", "rav4", "escape", "rogue", "equinox", "terrain", "tucson", "sportage", "cx-5", "cx-50", "compass", "forester", "outback")):
+        return ["Honda CR-V", "Toyota RAV4", "Ford Escape"]
+    # Minivans
+    if any(x in text for x in ("pacifica", "odyssey", "sienna", "carnival")):
+        return ["Chrysler Pacifica", "Honda Odyssey", "Toyota Sienna"]
+    # Cars / default cross-shop set. Still useful when a dealer has a model
+    # that has not yet been added to the explicit comparison map.
+    return ["Toyota Camry", "Honda Accord", "Nissan Altima"]
 
 
 def _profile_for_name(year: Optional[int], name: str) -> Dict[str, Any]:
