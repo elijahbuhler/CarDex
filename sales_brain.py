@@ -98,7 +98,7 @@ MODEL_YEAR_DATA: Dict[Tuple[int, str, str], Dict[str, Any]] = {
         "drivetrain": "FWD or available AWD",
         "body_style": "3-row SUV",
         "towing": "Up to 5,000 lbs when properly equipped",
-        "flat_tow": "Verify exact configuration/owner manual",
+        "flat_tow": "Flat-tow procedure is configuration-specific; use the manufacturer owner information for the exact vehicle.",
         "feature_summary": "3-row family SUV; strong family/comfort positioning; available AWD.",
         "source": "2020 Toyota Highlander model information",
     },
@@ -110,7 +110,7 @@ MODEL_YEAR_DATA: Dict[Tuple[int, str, str], Dict[str, Any]] = {
         "drivetrain": "FWD or available AWD",
         "body_style": "3-row SUV",
         "towing": "Up to 5,000 lbs when properly equipped",
-        "flat_tow": "Verify exact configuration/owner manual",
+        "flat_tow": "Flat-tow procedure is configuration-specific; use the manufacturer owner information for the exact vehicle.",
         "feature_summary": "3-row family SUV; available AWD; strong family-space and safety positioning.",
         "source": "2020 Honda Pilot model information",
     },
@@ -122,7 +122,7 @@ MODEL_YEAR_DATA: Dict[Tuple[int, str, str], Dict[str, Any]] = {
         "drivetrain": "2WD or available 4WD",
         "body_style": "SUV",
         "towing": "Up to 5,000 lbs",
-        "flat_tow": "Verify exact configuration/owner manual",
+        "flat_tow": "Flat-tow procedure is configuration-specific; use the manufacturer owner information for the exact vehicle.",
         "feature_summary": "Body-on-frame SUV; available part-time 4WD; 4WD systems include low-range capability.",
         "source": "2020 Toyota 4Runner model information",
     },
@@ -134,7 +134,7 @@ MODEL_YEAR_DATA: Dict[Tuple[int, str, str], Dict[str, Any]] = {
         "drivetrain": "FWD or available AWD",
         "body_style": "3-row SUV",
         "towing": "Up to 5,000 lbs when properly equipped",
-        "flat_tow": "Verify exact configuration/owner manual",
+        "flat_tow": "Flat-tow procedure is configuration-specific; use the manufacturer owner information for the exact vehicle.",
         "feature_summary": "3-row crossover; strong passenger/cargo-space positioning; available AWD.",
         "source": "2020 Chevrolet Traverse model information",
     },
@@ -160,7 +160,7 @@ MODEL_YEAR_DATA: Dict[Tuple[int, str, str], Dict[str, Any]] = {
         "drivetrain": "RWD or available 4WD",
         "body_style": "3-row SUV",
         "towing": "Up to 5,000 lbs when properly equipped",
-        "flat_tow": "Verify exact configuration/owner manual",
+        "flat_tow": "Flat-tow procedure is configuration-specific; use the manufacturer owner information for the exact vehicle.",
         "feature_summary": "Three-row SUV; standard Class III trailer tow package; available 3.0L EcoBoost V6 on Platinum; available 4WD and Terrain Management; BlueCruise available on select trims.",
         "source": "2025 Ford Explorer technical specifications / Ford model information",
     },
@@ -172,7 +172,7 @@ MODEL_YEAR_DATA: Dict[Tuple[int, str, str], Dict[str, Any]] = {
         "drivetrain": "FWD or available AWD",
         "body_style": "3-row SUV",
         "towing": "Up to 5,000 lbs",
-        "flat_tow": "Verify exact configuration/owner manual",
+        "flat_tow": "Flat-tow procedure is configuration-specific; use the manufacturer owner information for the exact vehicle.",
         "feature_summary": "Three-row SUV with seating up to eight; up to 97.5 cu. ft. of cargo space; available AWD; gas, hybrid and Hybrid MAX powertrains; Toyota Safety Sense 3.0.",
         "source": "2025 Toyota Grand Highlander model information",
     },
@@ -184,7 +184,7 @@ MODEL_YEAR_DATA: Dict[Tuple[int, str, str], Dict[str, Any]] = {
         "drivetrain": "2WD or available AWD",
         "body_style": "3-row SUV",
         "towing": "Up to 5,000 lbs when properly equipped (AWD)",
-        "flat_tow": "Verify exact configuration/owner manual",
+        "flat_tow": "Flat-tow procedure is configuration-specific; use the manufacturer owner information for the exact vehicle.",
         "feature_summary": "Three-row SUV; available i-VTM4 AWD; TrailSport adds off-road-oriented equipment; 10-speed automatic; towing varies by drivetrain/load conditions.",
         "source": "2025 Honda Pilot model information",
     },
@@ -196,7 +196,7 @@ MODEL_YEAR_DATA: Dict[Tuple[int, str, str], Dict[str, Any]] = {
         "drivetrain": "FWD or available AWD",
         "body_style": "3-row SUV",
         "towing": "Up to 5,000 lbs with included trailering equipment",
-        "flat_tow": "Verify exact configuration/owner manual",
+        "flat_tow": "Flat-tow procedure is configuration-specific; use the manufacturer owner information for the exact vehicle.",
         "feature_summary": "Three-row SUV; 7- or available 8-passenger seating; up to 98 cu. ft. cargo behind the first row; available AWD and Super Cruise on applicable configurations.",
         "source": "2025 Chevrolet Traverse model information",
     },
@@ -215,7 +215,7 @@ MODEL_YEAR_DATA: Dict[Tuple[int, str, str], Dict[str, Any]] = {
         "engine": "2.3L EcoBoost I-4", "hp": 300, "torque": 310,
         "transmission": "10-speed automatic", "drivetrain": "RWD or available Intelligent 4WD",
         "body_style": "3-row SUV", "towing": "Up to 5,600 lbs when properly equipped",
-        "flat_tow": "Verify exact configuration/owner manual",
+        "flat_tow": "Flat-tow procedure is configuration-specific; use the manufacturer owner information for the exact vehicle.",
         "feature_summary": "3-row SUV; rear-wheel-drive-based platform; available 4WD and Terrain Management.",
         "source": "2021 Ford Explorer model information",
     },
@@ -223,7 +223,7 @@ MODEL_YEAR_DATA: Dict[Tuple[int, str, str], Dict[str, Any]] = {
         "engine": "3.5L V6", "hp": 295, "torque": 263,
         "transmission": "8-speed automatic", "drivetrain": "FWD or available AWD",
         "body_style": "3-row SUV", "towing": "Up to 5,000 lbs when properly equipped",
-        "flat_tow": "Verify exact configuration/owner manual",
+        "flat_tow": "Flat-tow procedure is configuration-specific; use the manufacturer owner information for the exact vehicle.",
         "feature_summary": "3-row family SUV; available AWD; family/comfort-oriented packaging.",
         "source": "2021 Toyota Highlander model information",
     },
@@ -232,7 +232,7 @@ MODEL_YEAR_DATA: Dict[Tuple[int, str, str], Dict[str, Any]] = {
         "transmission": "9-speed automatic on most trims; 6-speed on LX",
         "drivetrain": "FWD or available AWD", "body_style": "3-row SUV",
         "towing": "Up to 5,000 lbs when properly equipped",
-        "flat_tow": "Verify exact configuration/owner manual",
+        "flat_tow": "Flat-tow procedure is configuration-specific; use the manufacturer owner information for the exact vehicle.",
         "feature_summary": "3-row family SUV; available AWD; family-space and safety positioning.",
         "source": "2021 Honda Pilot model information",
     },
@@ -240,7 +240,7 @@ MODEL_YEAR_DATA: Dict[Tuple[int, str, str], Dict[str, Any]] = {
         "engine": "4.0L V6", "hp": 270, "torque": 278,
         "transmission": "5-speed automatic", "drivetrain": "2WD or available 4WD",
         "body_style": "SUV", "towing": "Up to 5,000 lbs",
-        "flat_tow": "Verify exact configuration/owner manual",
+        "flat_tow": "Flat-tow procedure is configuration-specific; use the manufacturer owner information for the exact vehicle.",
         "feature_summary": "Body-on-frame SUV; available 4WD and low-range capability.",
         "source": "2021 Toyota 4Runner model information",
     },
@@ -298,6 +298,25 @@ for _y in (2020, 2021, 2022, 2023, 2024, 2025):
         "feature_summary": "Midsize sedan; available turbocharged powertrain on some trims/years.",
         "source": "Mazda6 model-year manufacturer specifications",
     })
+
+# Honda Civic model-year references. These are intentionally base/mainstream
+# model references; exact trim horsepower is taken from the listing/VDP when
+# available. This prevents bad NHTSA/feed values from turning a Civic into a
+# pickup or showing an impossible horsepower figure.
+for _y in (2020, 2021, 2022, 2023, 2024, 2025):
+    MODEL_YEAR_DATA.setdefault((_y, "honda", "civic"), {
+        "engine": "2.0L 4-cylinder gas reference" if _y >= 2022 else "2.0L 4-cylinder gas reference",
+        "hp": 158,
+        "torque": 138,
+        "transmission": "CVT",
+        "drivetrain": "FWD",
+        "body_style": "Compact sedan / hatchback",
+        "towing": "Not rated for towing",
+        "flat_tow": "Not designed for recreational flat towing",
+        "feature_summary": "Compact car; powertrain varies by trim/year, with higher-output Civic configurations available in some trims.",
+        "source": "Honda Civic model-year manufacturer specifications",
+    })
+
 
 
 COMPETITORS = {
@@ -359,22 +378,22 @@ def _general_profile(year: Optional[int], make: str, model: str) -> Dict[str, An
         "ford explorer": {
             "body_style": "3-row SUV",
             "feature_summary": "3-row SUV with rear-wheel-drive-based architecture on modern generations; drivetrain and equipment vary by year/trim.",
-            "flat_tow": "Verify exact configuration/owner manual.",
+            "flat_tow": "Flat-tow procedure is configuration-specific; use the manufacturer owner information for the exact vehicle.",
         },
         "toyota highlander": {
             "body_style": "3-row SUV",
             "feature_summary": "3-row family SUV; FWD/AWD and powertrains vary by year.",
-            "flat_tow": "Verify exact configuration/owner manual.",
+            "flat_tow": "Flat-tow procedure is configuration-specific; use the manufacturer owner information for the exact vehicle.",
         },
         "honda pilot": {
             "body_style": "3-row SUV",
             "feature_summary": "3-row family SUV with FWD/AWD availability depending on year.",
-            "flat_tow": "Verify exact configuration/owner manual.",
+            "flat_tow": "Flat-tow procedure is configuration-specific; use the manufacturer owner information for the exact vehicle.",
         },
         "toyota 4runner": {
             "body_style": "SUV",
             "feature_summary": "Body-on-frame SUV with available 4WD/low-range capability depending on trim/year.",
-            "flat_tow": "Verify exact configuration/owner manual.",
+            "flat_tow": "Flat-tow procedure is configuration-specific; use the manufacturer owner information for the exact vehicle.",
         },
     }
     return families.get(f"{make} {model}", {})
@@ -570,7 +589,7 @@ def _comparison(vehicle: Dict[str, Any], rival: str) -> Dict[str, Any]:
 
     return {
         "name": rival,
-        "data_available": bool(rival_data or lines),
+        "data_available": True,
         "year": year,
         "engine": rival_data.get("engine"),
         "hp": int(rival_hp) if rival_hp is not None else None,
@@ -614,14 +633,23 @@ def build_sales_brain(vehicle: Dict[str, Any], nhtsa: Optional[Dict[str, Any]] =
     if profile.get("torque") and not vehicle.get("torque"):
         vehicle["torque"] = f"{profile['torque']} lb-ft"
 
-    engine = vehicle.get("engine") or nhtsa.get("engine") or profile.get("engine")
-    hp = nhtsa.get("engine_hp") or vehicle.get("engine_hp") or profile.get("hp")
+    engine = vehicle.get("engine") or profile.get("engine") or nhtsa.get("engine")
+    hp = vehicle.get("engine_hp") or profile.get("hp") or nhtsa.get("engine_hp")
     torque = vehicle.get("torque") or (f"{profile['torque']} lb-ft" if profile.get("torque") else None)
-    transmission = vehicle.get("transmission") or nhtsa.get("transmission") or profile.get("transmission")
-    drivetrain = vehicle.get("drivetrain") or nhtsa.get("drivetrain") or profile.get("drivetrain")
-    body = vehicle.get("body_style") or nhtsa.get("body_style") or profile.get("body_style")
+    transmission = vehicle.get("transmission") or profile.get("transmission") or nhtsa.get("transmission")
+    drivetrain = vehicle.get("drivetrain") or profile.get("drivetrain") or nhtsa.get("drivetrain")
+    body = vehicle.get("body_style") or profile.get("body_style") or nhtsa.get("body_style")
     towing = vehicle.get("towing_capacity") or profile.get("towing")
     flat_tow = vehicle.get("flat_tow") or profile.get("flat_tow")
+
+    # Never let an obviously bad feed/NHTSA body classification override a
+    # known model-year profile (e.g. a Civic being reported as a pickup).
+    if profile.get("body_style"):
+        body = profile["body_style"]
+        vehicle["body_style"] = profile["body_style"]
+    if profile.get("hp") and not vehicle.get("engine_hp"):
+        vehicle["engine_hp"] = profile["hp"]
+
 
     title = " ".join(str(x) for x in [vehicle.get("year"), vehicle.get("make"), vehicle.get("model"), vehicle.get("trim")] if x)
 
@@ -705,6 +733,21 @@ def build_sales_brain(vehicle: Dict[str, Any], nhtsa: Optional[Dict[str, Any]] =
         "If space matters, have the customer test the seats and cargo area themselves.",
         "Use the actual screen, driver-assistance controls and comfort equipment on this VIN—not equipment from another trim.",
     ]
+
+    if not towing:
+        if body and any(x in str(body).lower() for x in ("sedan", "coupe", "hatchback", "car")):
+            towing = "Not rated for towing"
+        elif body and "pickup" in str(body).lower():
+            towing = "Published towing capacity varies by engine, cab, axle and equipment for this model year."
+        else:
+            towing = "Published towing capacity varies by configuration for this model year."
+    if not flat_tow:
+        if body and any(x in str(body).lower() for x in ("sedan", "coupe", "hatchback", "car")):
+            flat_tow = "Not designed for recreational flat towing"
+        else:
+            flat_tow = "Flat-tow procedure is configuration-specific; use the manufacturer owner information for the exact vehicle."
+    vehicle["towing_capacity"] = towing
+    vehicle["flat_tow"] = flat_tow
 
     pitch = f"This {title or 'vehicle'} has"
     descriptors = []
