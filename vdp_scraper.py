@@ -163,6 +163,28 @@ def scrape_vdp(url: str) -> Dict[str, Any]:
         elif "/certified/" in path or re.search(r"\bcertified\s+pre[- ]owned\b", soup.get_text(" ", strip=True), re.I):
             out["condition"] = "Certified Pre-Owned"
 
+    # First read the dealership's explicit "Stock Number" label. Some
+    # Dealer.com JSON-LD uses sku/mpn for an internal identifier that can look
+    # exactly like a VIN suffix. The visible Lithia Stock Number is the source
+    # of truth, especially for USED vehicles.
+    visible_text = soup.get_text(" ", strip=True)
+    stock_patterns = [
+        r"(?i)\bStock\s*Number\s*[:#]?\s*([A-Z0-9-]{3,20})\b",
+        r"(?i)\bStock\s*#\s*[:#]?\s*([A-Z0-9-]{3,20})\b",
+    ]
+    page_vin = _extract_vin(html)
+    for pat in stock_patterns:
+        m = re.search(pat, visible_text)
+        if m:
+            candidate = m.group(1).strip()
+            # Never accept a VIN suffix as a USED stock number. If the
+            # dealership's label itself is that suffix, continue to the next
+            # public source rather than corrupting used inventory.
+            is_used_page = "/used/" in path or "/certified/" in path or str(out.get("condition") or "").lower() in ("used", "certified pre-owned")
+            if not (is_used_page and page_vin and candidate.upper() == page_vin[-8:].upper()):
+                out["stock_number"] = candidate
+                break
+
     # --- 1) JSON-LD on the detail page: often carries stock #, mileage, photo ---
     for script in soup.find_all("script", type="application/ld+json"):
         try:
@@ -179,7 +201,10 @@ def scrape_vdp(url: str) -> Dict[str, Any]:
 
             sku = item.get("sku") or item.get("mpn")
             if sku and not out.get("stock_number"):
-                out["stock_number"] = str(sku).strip()
+                candidate = str(sku).strip()
+                is_used_page = "/used/" in path or "/certified/" in path or str(out.get("condition") or "").lower() in ("used", "certified pre-owned")
+                if not (is_used_page and page_vin and candidate.upper() == page_vin[-8:].upper()):
+                    out["stock_number"] = candidate
 
             item_condition = item.get("itemCondition") or item.get("condition")
             if item_condition and not out.get("condition"):
