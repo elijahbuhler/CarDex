@@ -10,9 +10,9 @@ from flask import Flask, jsonify, render_template_string, request
 
 from scraper import InventoryEngine, list_adapters
 from store import InventoryStore
-from cardex_sales_brain import build_sales_brain
+from sales_brain import build_sales_brain
 
-__version__ = "2.3.3-sales-brain-import-fixed"
+__version__ = "2.3.5-sales-brain-report-fixed"
 
 app = Flask(__name__)
 app.config["JSON_SORT_KEYS"] = False
@@ -501,7 +501,23 @@ def api_vehicle_detail(vehicle_id: int):
     # Sales Brain is built server-side so the report uses the same logic for
     # every vehicle. Exact VIN/listing data wins; only stable same-year/model
     # fallback facts are added when the exact field is unavailable.
-    vehicle["sales_brain"] = build_sales_brain(vehicle, nhtsa)
+    # Sales Brain must never be able to take down the vehicle report.
+    # If a scraped field has an unexpected type/value, return the vehicle
+    # report with a safe fallback instead of a 500 error.
+    try:
+        vehicle["sales_brain"] = build_sales_brain(vehicle, nhtsa)
+    except Exception as exc:
+        vehicle["sales_brain"] = {
+            "points": [],
+            "objections": ["Sales Brain could not process this vehicle yet; verify the listing details before quoting configuration-specific claims."],
+            "pitch": "Use the vehicle's verified listing details and ask the customer what matters most to them.",
+            "competitors": [],
+            "questions": ["What is the #1 thing this vehicle needs to do for you?"],
+            "demo": ["Demonstrate the actual equipment shown on this VIN/listing."],
+            "fallback": {},
+            "resolved": {},
+            "error": str(exc),
+        }
 
     return jsonify({"vehicle": vehicle, "events": events, "nhtsa": nhtsa})
 
