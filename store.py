@@ -578,11 +578,12 @@ class InventoryStore:
         with self._conn() as conn:
             rows = conn.execute(
                 """
-                SELECT id, vin, stock_number, mileage, condition, listing_url
+                SELECT id, vin, stock_number, mileage, condition, image_url, engine_hp, transmission, torque, listing_url
                 FROM vehicles
                 WHERE is_active = 1 AND vin IS NOT NULL AND vin != ''
                   AND (
-                    stock_number IS NULL OR stock_number = '' OR mileage IS NULL
+                    stock_number IS NULL OR stock_number = '' OR mileage IS NULL OR condition IS NULL OR condition = ''
+                    OR image_url IS NULL OR image_url = '' OR engine_hp IS NULL OR transmission IS NULL OR torque IS NULL
                     OR (LOWER(COALESCE(condition,'')) IN ('used','certified pre-owned','cpo')
                         AND LENGTH(COALESCE(stock_number,'')) = 8
                         AND UPPER(stock_number) = UPPER(SUBSTR(vin, -8)))
@@ -601,7 +602,8 @@ class InventoryStore:
                 SELECT COUNT(*) FROM vehicles
                 WHERE is_active = 1 AND vin IS NOT NULL AND vin != ''
                   AND (
-                    stock_number IS NULL OR stock_number = '' OR mileage IS NULL
+                    stock_number IS NULL OR stock_number = '' OR mileage IS NULL OR condition IS NULL OR condition = ''
+                    OR image_url IS NULL OR image_url = '' OR engine_hp IS NULL OR transmission IS NULL OR torque IS NULL
                     OR (LOWER(COALESCE(condition,'')) IN ('used','certified pre-owned','cpo')
                         AND LENGTH(COALESCE(stock_number,'')) = 8
                         AND UPPER(stock_number) = UPPER(SUBSTR(vin, -8)))
