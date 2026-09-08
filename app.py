@@ -489,38 +489,51 @@ def api_vehicle_detail(vehicle_id: int):
         vehicle.get("engine_hp"),
         vehicle.get("transmission"),
     ])
-    if (force_vdp or still_missing) and vehicle.get("listing_url"):
+    listing_path = str(vehicle.get("listing_url") or "").lower()
+    is_new_listing = str(vehicle.get("condition") or "").strip().lower() == "new" or "/new/" in listing_path
+    if (force_vdp or still_missing or is_new_listing) and vehicle.get("listing_url"):
         try:
             from vdp_scraper import scrape_vdp
             vdp_data = scrape_vdp(vehicle["listing_url"])
         except Exception:
             vdp_data = {}
         if vdp_data:
-            # For NEW Lithia vehicles, the dealership's stock number is the
-            # last 8 characters of the VIN when no explicit stock number is
-            # exposed by the public VDP. For USED vehicles, never use this
-            # fallback: keep looking for the actual used stock number.
-            if (str(vdp_data.get("condition") or vehicle.get("condition") or "").strip().lower() == "new"
-                    and not vdp_data.get("stock_number") and vehicle.get("vin")):
+            # NEW Lithia rule: the stock number shown in CarDex is always
+            # the last 8 characters of the VIN. Do not substitute a different
+            # stock value for NEW vehicles. USED vehicles continue to use the
+            # actual stock number found on the public Lithia VDP.
+            condition_now = str(vdp_data.get("condition") or vehicle.get("condition") or "").strip().lower()
+            listing_path = str(vehicle.get("listing_url") or "").lower()
+            is_new = condition_now == "new" or "/new/" in listing_path
+            if is_new and vehicle.get("vin"):
                 vin_text = str(vehicle["vin"]).strip().upper()
                 if len(vin_text) >= 8:
                     vdp_data["stock_number"] = vin_text[-8:]
+                    vdp_data["condition"] = vdp_data.get("condition") or "New"
 
             store.fill_vdp_fields(vehicle_id, vdp_data)
             for f in ("stock_number", "image_url", "mileage", "condition", "torque", "engine_hp", "transmission", "engine", "towing_capacity", "flat_tow"):
                 if vdp_data.get(f) and not vehicle.get(f):
                     vehicle[f] = vdp_data[f]
+            # For NEW inventory, prefer the dealership website's mileage when
+            # it explicitly publishes one. Do not invent a mileage value.
+            if is_new and vdp_data.get("mileage") is not None:
+                vehicle["mileage"] = vdp_data["mileage"]
 
     # Final NEW-vehicle stock fallback. If the public VDP did not expose a
     # stock number at all, Lithia's NEW stock number is the VIN's last 8.
     # USED vehicles intentionally do not use this fallback.
-    if (str(vehicle.get("condition") or "").strip().lower() == "new"
-            and not vehicle.get("stock_number") and vehicle.get("vin")):
+    # Final NEW-vehicle rule: always use VIN last 8 as stock number.
+    # USED vehicles intentionally do not use this fallback.
+    listing_path = str(vehicle.get("listing_url") or "").lower()
+    if ((str(vehicle.get("condition") or "").strip().lower() == "new" or "/new/" in listing_path)
+            and vehicle.get("vin")):
         vin_text = str(vehicle["vin"]).strip().upper()
         if len(vin_text) >= 8:
             vehicle["stock_number"] = vin_text[-8:]
+            vehicle["condition"] = vehicle.get("condition") or "New"
             try:
-                store.fill_vdp_fields(vehicle_id, {"stock_number": vehicle["stock_number"]})
+                store.fill_vdp_fields(vehicle_id, {"stock_number": vehicle["stock_number"], "condition": vehicle["condition"]})
             except Exception:
                 pass
 
