@@ -231,9 +231,26 @@ COMPETITORS = {
 
 
 def _model_profile(year: Optional[int], make: str, model: str) -> Dict[str, Any]:
+    """Resolve a model-year profile even when the listing model includes its trim."""
     if year is None:
         return {}
-    return MODEL_YEAR_DATA.get((year, make, model), {})
+
+    exact = MODEL_YEAR_DATA.get((year, make, model))
+    if exact:
+        return exact
+
+    # Inventory feeds sometimes put the trim after the model name, e.g.
+    # "Grand Cherokee L Laredo". Match the model-year base model without
+    # treating trim/package equipment as model-level facts.
+    candidates = [
+        (k, v) for k, v in MODEL_YEAR_DATA.items()
+        if k[0] == year and k[1] == make
+    ]
+    candidates.sort(key=lambda item: len(item[0][2]), reverse=True)
+    for (yy, mmake, mmodel), profile in candidates:
+        if model.startswith(mmodel + " ") or mmodel.startswith(model + " "):
+            return profile
+    return {}
 
 
 def _general_profile(year: Optional[int], make: str, model: str) -> Dict[str, Any]:
@@ -349,6 +366,10 @@ def _comparison(vehicle: Dict[str, Any], rival: str) -> Dict[str, Any]:
         lines.append(f"Vehicle format: {base['body_style']} vs {rival_data['body_style']}.")
     if base.get("towing") and rival_data.get("towing"):
         lines.append(f"Towing reference: {base['towing']} vs {rival_data['towing']}.")
+    elif rival_data.get("towing"):
+        # Never show a blank/N/A towing field when a verified model-year
+        # towing reference exists.
+        lines.append(f"Towing reference: {rival_data['towing']}.")
 
     if rival_data.get("feature_summary"):
         lines.append(f"{rival} model-year focus: {rival_data['feature_summary']}")
@@ -417,6 +438,7 @@ def _comparison(vehicle: Dict[str, Any], rival: str) -> Dict[str, Any]:
         "transmission": rival_data.get("transmission"),
         "drivetrain": rival_data.get("drivetrain"),
         "max_towing": rival_data.get("towing"),
+        "towing_lbs": _tow_num(rival_data.get("towing")) if rival_data.get("towing") else None,
         "feature_summary": rival_data.get("feature_summary"),
         "comparison": lines or [f"{rival} is shown here as a {year or 'model-year'} model-level reference; exact trim/package equipment is not being assumed."],
         "angle": angle,
