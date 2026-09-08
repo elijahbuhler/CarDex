@@ -301,7 +301,7 @@ INDEX_HTML = r"""
           (sales.points.length ? sales.points.map(function(p){ return '<div class="bullet">' + p + '</div>'; }).join("") : '<div class="bullet warn">No selling points were returned for this vehicle. The Sales Brain needs to be connected to the current sales_brain.py.</div>') +
           (sales.fallback && sales.fallback.source ? '<div class="section-title">Smart fallback</div><div class="pitch">Some vehicle-specific data was unavailable, so CarDex filled only stable same-year/model facts. Configuration-dependent items are described as model-level references when exact listing data is unavailable.</div>' : '') +
           (sales.competitors.length ? '<div class="section-title">Competitive intelligence</div>' + sales.competitors.map(function(c){
-            var details = '<div class="bullet"><strong>' + c.name + '</strong>: ' + (c.hp != null ? c.hp + ' hp' : 'Horsepower: not available in current model-year reference') + (c.torque != null ? ' / ' + c.torque + ' lb-ft' : '') + (c.engine ? ' • ' + c.engine : '') + (c.max_towing != null ? ' • up to ' + Number(c.max_towing).toLocaleString() + ' lbs towing' : (c.towing_label ? ' • ' + c.towing_label : '')) + '</div>';
+            var details = '<div class="bullet"><strong>' + c.name + '</strong>: ' + (c.hp != null ? c.hp + ' hp' : 'Horsepower: model-level reference not published in CarDex yet') + (c.torque != null ? ' / ' + c.torque + ' lb-ft' : '') + (c.engine ? ' • ' + c.engine : '') + (c.max_towing != null ? ' • up to ' + Number(c.max_towing).toLocaleString() + ' lbs towing' : (c.towing_label ? ' • ' + c.towing_label : '')) + '</div>';
             var compare = (c.comparison || []).map(function(x){ return '<div class="bullet">' + x + '</div>'; }).join('');
             return details + '<div class="bullet">' + (c.angle || '') + '</div>' + compare + (c.edge ? '<div class="pitch"><strong>How to sell it:</strong> ' + c.edge + '</div>' : '');
           }).join('') + '<div style="font-size:.78rem;opacity:.7;margin-top:.5rem;">Competitor numbers are model-level references, not VIN-to-VIN matches. Maximum towing varies by configuration.</div>' : '') +
@@ -402,7 +402,7 @@ def api_backfill_nhtsa():
             from vdp_scraper import scrape_vdp
             current = store.get_vehicle(row["id"]) or {}
             listing_url = current.get("listing_url")
-            vdp_data = scrape_vdp(listing_url) if listing_url else {}
+            vdp_data = scrape_vdp(listing_url, known_vin=vin) if listing_url else {}
             if vdp_data:
                 is_new = str(vdp_data.get("condition") or current.get("condition") or "").strip().lower() == "new" or "/new/" in str(listing_url or "").lower()
                 if is_new and vin:
@@ -523,7 +523,7 @@ def api_vehicle_detail(vehicle_id: int):
     if vehicle.get("listing_url"):
         try:
             from vdp_scraper import scrape_vdp
-            vdp_data = scrape_vdp(vehicle["listing_url"])
+            vdp_data = scrape_vdp(vehicle["listing_url"], known_vin=vehicle.get("vin"))
         except Exception:
             vdp_data = {}
         if vdp_data:
