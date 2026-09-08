@@ -12,7 +12,7 @@ from scraper import InventoryEngine, list_adapters
 from store import InventoryStore
 from sales_brain import build_sales_brain
 
-__version__ = "2.3.1-sales-brain-stable"
+__version__ = "2.3.2-sales-brain-fixed"
 
 app = Flask(__name__)
 app.config["JSON_SORT_KEYS"] = False
@@ -230,14 +230,14 @@ INDEX_HTML = r"""
       return '<div class="spec"><div class="label">' + label + '</div><div class="value ' + cls + '">' + display + "</div></div>";
     }
     function buildSales(v, nhtsa) {
-      const raw = v.sales_brain || {};
+      const raw = (v.sales_brain && typeof v.sales_brain === "object") ? v.sales_brain : {};
       return {
-        points: raw.points || [],
-        objections: raw.objections || [],
+        points: Array.isArray(raw.points) ? raw.points : [],
+        objections: Array.isArray(raw.objections) ? raw.objections : [],
         pitch: raw.pitch || "",
-        competitors: raw.competitors || [],
-        questions: raw.questions || [],
-        demo: raw.demo || [],
+        competitors: Array.isArray(raw.competitors) ? raw.competitors : [],
+        questions: Array.isArray(raw.questions) ? raw.questions : [],
+        demo: Array.isArray(raw.demo) ? raw.demo : [],
         fallback: raw.fallback || {},
         resolved: raw.resolved || {}
       };
@@ -297,17 +297,19 @@ INDEX_HTML = r"""
           specRow("Flat-tow", v.flat_tow) +
           specRow("Towing capacity", v.towing_capacity) +
           '</div>' +
-          '<div class="section-title">Best selling points</div>' +
-          sales.points.map(function(p){ return '<div class="bullet">' + p + '</div>'; }).join("") +
+          '<div class="section-title">Sales Brain — Best selling points</div>' +
+          (sales.points.length ? sales.points.map(function(p){ return '<div class="bullet">' + p + '</div>'; }).join("") : '<div class="bullet warn">No selling points were returned for this vehicle. The Sales Brain needs to be connected to the current sales_brain.py.</div>') +
           (sales.fallback && sales.fallback.source ? '<div class="section-title">Smart fallback</div><div class="pitch">Some vehicle-specific data was unavailable, so CarDex filled only stable same-year/model facts. Configuration-dependent items remain VERIFY.</div>' : '') +
           (sales.competitors.length ? '<div class="section-title">Competitive intelligence</div>' + sales.competitors.map(function(c){
             var details = c.data_available ? '<div class="bullet"><strong>' + c.name + '</strong>: ' + (c.hp || 'VERIFY') + ' hp / ' + (c.torque || 'VERIFY') + ' lb-ft' + (c.engine ? ' • ' + c.engine : '') + (c.max_towing ? ' • up to ' + Number(c.max_towing).toLocaleString() + ' lbs towing' : '') + '</div>' : '<div class="bullet"><strong>' + c.name + '</strong>: model-level reference data not loaded.</div>';
             var compare = (c.comparison || []).map(function(x){ return '<div class="bullet">' + x + '</div>'; }).join('');
             return details + '<div class="bullet">' + (c.angle || '') + '</div>' + compare + (c.edge ? '<div class="pitch"><strong>How to sell it:</strong> ' + c.edge + '</div>' : '');
           }).join('') + '<div style="font-size:.78rem;opacity:.7;margin-top:.5rem;">Competitor numbers are model-level references, not VIN-to-VIN matches. Maximum towing varies by configuration.</div>' : '') +
-          '<div class="section-title">Customer pitch</div><div class="pitch">' + sales.pitch + '</div>' +
-          (sales.questions.length ? '<div class="section-title">Questions to ask</div>' + sales.questions.map(function(p){ return '<div class="bullet">' + p + '</div>'; }).join("") : '') +
-          (sales.demo.length ? '<div class="section-title">Test-drive / demo focus</div>' + sales.demo.map(function(p){ return '<div class="bullet">' + p + '</div>'; }).join("") : '') +
+          '<div class="section-title">Customer pitch</div><div class="pitch">' + (sales.pitch || "Start by asking what matters most to the customer, then connect the vehicle's verified equipment to that need.") + '</div>' +
+          '<div class="section-title">Questions to ask</div>' +
+          (sales.questions.length ? sales.questions.map(function(p){ return '<div class="bullet">' + p + '</div>'; }).join("") : '<div class="bullet">What is the #1 thing this vehicle needs to do for you?</div>') +
+          '<div class="section-title">Test-drive / demo focus</div>' +
+          (sales.demo.length ? sales.demo.map(function(p){ return '<div class="bullet">' + p + '</div>'; }).join("") : '<div class="bullet">Demonstrate the verified feature that matters most to the customer.</div>') +
           '<div class="section-title">Know before you sell</div>' +
           sales.objections.map(function(p){ return '<div class="bullet warn">' + p + '</div>'; }).join("");
       } catch (e) {
@@ -499,10 +501,7 @@ def api_vehicle_detail(vehicle_id: int):
     # Sales Brain is built server-side so the report uses the same logic for
     # every vehicle. Exact VIN/listing data wins; only stable same-year/model
     # fallback facts are added when the exact field is unavailable.
-    try:
-        vehicle["sales_brain"] = build_sales_brain(vehicle, nhtsa)
-    except Exception:
-        vehicle["sales_brain"] = {"points": [], "objections": [], "pitch": ""}
+    vehicle["sales_brain"] = build_sales_brain(vehicle, nhtsa)
 
     return jsonify({"vehicle": vehicle, "events": events, "nhtsa": nhtsa})
 
