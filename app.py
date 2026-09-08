@@ -256,11 +256,11 @@ INDEX_HTML = r"""
         const nhtsa = data.nhtsa || v.nhtsa || null;
         const sales = buildSales(v, nhtsa);
         const title = titleOf(v);
-        const hpValue = (nhtsa && nhtsa.engine_hp) || sales.resolved.engine_hp;
+        const hpValue = sales.resolved.engine_hp || (nhtsa && nhtsa.engine_hp);
         const hp = hpValue ? (hpValue + " hp") : null;
         const engineValue = v.engine || sales.resolved.engine;
         const torqueValue = v.torque || sales.resolved.torque;
-        const bodyValue = v.body_style || (nhtsa && nhtsa.body_style) || sales.resolved.body_style;
+        const bodyValue = sales.resolved.body_style || v.body_style || (nhtsa && nhtsa.body_style);
         const photo = v.image_url
           ? '<div class="report-photo"><img src="' + v.image_url + '" alt="" /></div>'
           : '<div class="report-photo">No photo yet</div>';
@@ -294,8 +294,8 @@ INDEX_HTML = r"""
           specRow("Fuel", (nhtsa && nhtsa.fuel) || v.fuel_economy) +
           specRow("Body", bodyValue || sales.resolved.body_style) +
           specRow("Torque", torqueValue || sales.resolved.torque) +
-          specRow("Flat-tow", v.flat_tow || sales.resolved.flat_tow) +
-          specRow("Towing capacity", v.towing_capacity || sales.resolved.towing_capacity) +
+          specRow("Flat-tow", sales.resolved.flat_tow || v.flat_tow) +
+          specRow("Towing capacity", sales.resolved.towing_capacity || v.towing_capacity) +
           '</div>' +
           '<div class="section-title">Sales Brain — Best selling points</div>' +
           (sales.points.length ? sales.points.map(function(p){ return '<div class="bullet">' + p + '</div>'; }).join("") : '<div class="bullet warn">No selling points were returned for this vehicle. The Sales Brain needs to be connected to the current sales_brain.py.</div>') +
@@ -396,7 +396,24 @@ def api_backfill_nhtsa():
         if nhtsa:
             store.fill_nhtsa_fields(row["id"], nhtsa)
             updated += 1
-        _time.sleep(0.15)  # polite pause between public NHTSA calls
+        # Also backfill the public dealership VDP so stock number/mileage
+        # appear in the backlog workflow, not only after opening a report.
+        try:
+            from vdp_scraper import scrape_vdp
+            current = store.get_vehicle(row["id"]) or {}
+            listing_url = current.get("listing_url")
+            vdp_data = scrape_vdp(listing_url) if listing_url else {}
+            if vdp_data:
+                is_new = str(vdp_data.get("condition") or current.get("condition") or "").strip().lower() == "new" or "/new/" in str(listing_url or "").lower()
+                if is_new and vin:
+                    v = str(vin).strip().upper()
+                    if len(v) >= 8:
+                        vdp_data["stock_number"] = v[-8:]
+                        vdp_data["condition"] = vdp_data.get("condition") or "New"
+                store.fill_vdp_fields(row["id"], vdp_data)
+        except Exception:
+            pass
+        _time.sleep(0.15)  # polite pause between public calls
 
     remaining = store.count_missing_ymm()
     return jsonify({
@@ -491,6 +508,15 @@ def api_vehicle_detail(vehicle_id: int):
     ])
     listing_path = str(vehicle.get("listing_url") or "").lower()
     is_new_listing = str(vehicle.get("condition") or "").strip().lower() == "new" or "/new/" in listing_path
+    # A previous CarDex version incorrectly stored the VIN's last 8 as the
+    # stock number for some USED vehicles. Treat that exact pattern as stale
+    # for used inventory so the public Lithia VDP gets a chance to replace it.
+    listing_path = str(vehicle.get("listing_url") or "").lower()
+    is_used_listing = str(vehicle.get("condition") or "").strip().lower() in ("used", "certified pre-owned", "cpo") or "/used/" in listing_path or "/certified/" in listing_path
+    if is_used_listing and vehicle.get("vin") and vehicle.get("stock_number"):
+        if str(vehicle["stock_number"]).strip().upper() == str(vehicle["vin"]).strip().upper()[-8:]:
+            vehicle["stock_number"] = None
+
     if vehicle.get("listing_url"):
         try:
             from vdp_scraper import scrape_vdp
