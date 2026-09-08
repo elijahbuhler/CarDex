@@ -238,6 +238,14 @@ class InventoryStore:
             for v in vehicles:
                 vin = (v.get("vin") or "").strip().upper()
                 stock = (v.get("stock_number") or "").strip()
+                listing_path = str(v.get("listing_url") or "").lower()
+                is_new = str(v.get("condition") or "").strip().lower() == "new" or "/new/" in listing_path
+                # Lithia NEW stock is the VIN's final 8 characters. Enforce it
+                # at inventory-ingest time so the stock number appears in the
+                # main inventory/backlog immediately, not only after a report opens.
+                if is_new and len(vin) >= 8:
+                    stock = vin[-8:]
+                    v["stock_number"] = stock
                 key = vin or (f"STOCK:{stock}" if stock else "")
                 if not key:
                     continue
@@ -270,7 +278,7 @@ class InventoryStore:
                                 now, price, price, v.get("mileage"),
                                 v.get("listing_url"), v.get("image_url"),
                                 v.get("year"), v.get("make"), v.get("model"),
-                                v.get("trim"), v.get("condition"), raw,
+                                v.get("trim"), v.get("condition"), stock or None, raw,
                                 vehicle_id,
                             ),
                         )
@@ -297,14 +305,14 @@ class InventoryStore:
                                 SET last_seen_at = ?, last_price = price, price = ?,
                                     mileage = ?, listing_url = ?, image_url = ?,
                                     year = ?, make = ?, model = ?, trim = ?,
-                                    condition = ?, raw_json = ?
+                                    condition = ?, stock_number = ?, raw_json = ?
                                 WHERE id = ?
                                 """,
                                 (
                                     now, price, v.get("mileage"),
                                     v.get("listing_url"), v.get("image_url"),
                                     v.get("year"), v.get("make"), v.get("model"),
-                                    v.get("trim"), v.get("condition"), raw,
+                                    v.get("trim"), v.get("condition"), stock or None, raw,
                                     vehicle_id,
                                 ),
                             )
@@ -322,13 +330,13 @@ class InventoryStore:
                                 """
                                 UPDATE vehicles
                                 SET last_seen_at = ?, mileage = ?, listing_url = ?,
-                                    image_url = ?, raw_json = ?
+                                    image_url = ?, stock_number = CASE WHEN ? IS NOT NULL AND ? <> '' THEN ? ELSE stock_number END, raw_json = ?
                                 WHERE id = ?
                                 """,
                                 (
                                     now, v.get("mileage"),
                                     v.get("listing_url"), v.get("image_url"),
-                                    raw, vehicle_id,
+                                    stock or None, stock, stock or None, raw, vehicle_id,
                                 ),
                             )
                             stats["unchanged"] += 1
