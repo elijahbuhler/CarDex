@@ -39,6 +39,10 @@ def _normalize_model(make: Any, model: Any, trim: Any = "") -> str:
         return aliases[m]
     if m in {"mazda 6", "mazda6"}:
         return "mazda6"
+    if m in {"crv", "cr-v"}:
+        return "cr-v"
+    if m in {"rav 4", "rav4"}:
+        return "rav4"
     # Prefer known model prefixes, e.g. "grand cherokee l laredo".
     known = sorted([
         "grand cherokee l", "grand cherokee", "grand highlander",
@@ -315,6 +319,64 @@ for _y in (2020, 2021, 2022, 2023, 2024, 2025):
         "source": "Mazda6 model-year manufacturer specifications",
     })
 
+# Common compact-SUV comparison references. These prevent a comparison from
+# going blank simply because the exact listing year is not in the table.
+for _y in (2020, 2021, 2022, 2023, 2024, 2025, 2026):
+    MODEL_YEAR_DATA.setdefault((_y, "honda", "cr-v"), {
+        "engine": "1.5L turbocharged 4-cylinder gas reference",
+        "hp": 190,
+        "torque": 179,
+        "transmission": "CVT",
+        "drivetrain": "FWD or available AWD",
+        "body_style": "Compact SUV",
+        "towing": "Up to 1,500 lbs when properly equipped",
+        "flat_tow": "Not designed for recreational flat towing",
+        "feature_summary": "Compact SUV; powertrain and equipment vary by year/trim; hybrid configurations exist in some years.",
+        "source": "Honda CR-V model-year manufacturer specifications",
+    })
+    MODEL_YEAR_DATA.setdefault((_y, "toyota", "rav4"), {
+        "engine": "2.5L 4-cylinder gas reference",
+        "hp": 203,
+        "torque": 184,
+        "transmission": "8-speed automatic",
+        "drivetrain": "FWD or available AWD",
+        "body_style": "Compact SUV",
+        "towing": "Up to 3,500 lbs on applicable configurations",
+        "flat_tow": "Not designed for recreational flat towing",
+        "feature_summary": "Compact SUV; hybrid and plug-in configurations vary by year.",
+        "source": "Toyota RAV4 model-year manufacturer specifications",
+    })
+    MODEL_YEAR_DATA.setdefault((_y, "ford", "escape"), {
+        "engine": "1.5L EcoBoost 3-cylinder gas reference",
+        "hp": 181,
+        "torque": 190,
+        "transmission": "8-speed automatic",
+        "drivetrain": "FWD or available AWD",
+        "body_style": "Compact SUV",
+        "towing": "Up to 3,500 lbs when properly equipped",
+        "flat_tow": "Not designed for recreational flat towing",
+        "feature_summary": "Compact SUV; powertrains vary by year/trim, including hybrid options.",
+        "source": "Ford Escape model-year manufacturer specifications",
+    })
+
+for _y in (2020, 2021, 2022, 2023, 2024, 2025, 2026):
+    MODEL_YEAR_DATA.setdefault((_y, "hyundai", "tucson"), {
+        "engine": "2.5L 4-cylinder gas reference", "hp": 187, "torque": 178,
+        "transmission": "8-speed automatic", "drivetrain": "FWD or available AWD",
+        "body_style": "Compact SUV", "towing": "Up to 2,000 lbs when properly equipped",
+        "flat_tow": "Not designed for recreational flat towing",
+        "feature_summary": "Compact SUV; powertrain and equipment vary by year/trim.",
+        "source": "Hyundai Tucson model-year manufacturer specifications",
+    })
+    MODEL_YEAR_DATA.setdefault((_y, "toyota", "corolla cross"), {
+        "engine": "2.0L 4-cylinder gas reference", "hp": 169, "torque": 151,
+        "transmission": "CVT", "drivetrain": "FWD or available AWD",
+        "body_style": "Subcompact SUV", "towing": "Not rated for towing",
+        "flat_tow": "Not designed for recreational flat towing",
+        "feature_summary": "Small crossover SUV; hybrid configuration varies by year.",
+        "source": "Toyota Corolla Cross model-year manufacturer specifications",
+    })
+
 # Honda Civic model-year references. These are intentionally base/mainstream
 # model references; exact trim horsepower is taken from the listing/VDP when
 # available. This prevents bad NHTSA/feed values from turning a Civic into a
@@ -367,6 +429,9 @@ COMPETITORS = {
     "honda accord": ["Toyota Camry", "Nissan Altima", "Mazda 6"],
     "toyota camry": ["Honda Accord", "Nissan Altima", "Mazda 6"],
     "nissan altima": ["Honda Accord", "Toyota Camry", "Mazda 6"],
+    "honda cr-v": ["Toyota RAV4", "Ford Escape", "Toyota Corolla Cross"],
+    "toyota rav4": ["Honda CR-V", "Ford Escape", "Hyundai Tucson"],
+    "ford escape": ["Honda CR-V", "Toyota RAV4", "Hyundai Tucson"],
 }
 
 
@@ -663,7 +728,7 @@ def _comparison(vehicle: Dict[str, Any], rival: str) -> Dict[str, Any]:
         "towing_lbs": _tow_num(rival_data.get("towing")),
         "towing_label": _tow_text(rival_data.get("towing")),
         "feature_summary": rival_data.get("feature_summary"),
-        "comparison": lines or [f"{rival} is shown here as a {year or 'model-year'} model-level reference; exact trim/package equipment is not being assumed."],
+        "comparison": lines or [f"{rival}: model-year reference data is limited for this comparison; use the exact vehicle listing for trim-specific numbers."],
         "angle": angle,
         "edge": edge,
         "source": rival_data.get("source", "CarDex model-level reference"),
