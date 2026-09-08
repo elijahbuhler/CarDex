@@ -486,6 +486,8 @@ def api_vehicle_detail(vehicle_id: int):
         vehicle.get("mileage"),
         vehicle.get("condition"),
         vehicle.get("torque"),
+        vehicle.get("engine_hp"),
+        vehicle.get("transmission"),
     ])
     if (force_vdp or still_missing) and vehicle.get("listing_url"):
         try:
@@ -494,10 +496,33 @@ def api_vehicle_detail(vehicle_id: int):
         except Exception:
             vdp_data = {}
         if vdp_data:
+            # For NEW Lithia vehicles, the dealership's stock number is the
+            # last 8 characters of the VIN when no explicit stock number is
+            # exposed by the public VDP. For USED vehicles, never use this
+            # fallback: keep looking for the actual used stock number.
+            if (str(vdp_data.get("condition") or vehicle.get("condition") or "").strip().lower() == "new"
+                    and not vdp_data.get("stock_number") and vehicle.get("vin")):
+                vin_text = str(vehicle["vin"]).strip().upper()
+                if len(vin_text) >= 8:
+                    vdp_data["stock_number"] = vin_text[-8:]
+
             store.fill_vdp_fields(vehicle_id, vdp_data)
-            for f in ("stock_number", "image_url", "mileage", "condition", "torque", "towing_capacity", "flat_tow"):
+            for f in ("stock_number", "image_url", "mileage", "condition", "torque", "engine_hp", "transmission", "engine", "towing_capacity", "flat_tow"):
                 if vdp_data.get(f) and not vehicle.get(f):
                     vehicle[f] = vdp_data[f]
+
+    # Final NEW-vehicle stock fallback. If the public VDP did not expose a
+    # stock number at all, Lithia's NEW stock number is the VIN's last 8.
+    # USED vehicles intentionally do not use this fallback.
+    if (str(vehicle.get("condition") or "").strip().lower() == "new"
+            and not vehicle.get("stock_number") and vehicle.get("vin")):
+        vin_text = str(vehicle["vin"]).strip().upper()
+        if len(vin_text) >= 8:
+            vehicle["stock_number"] = vin_text[-8:]
+            try:
+                store.fill_vdp_fields(vehicle_id, {"stock_number": vehicle["stock_number"]})
+            except Exception:
+                pass
 
     # Sales Brain is built server-side so the report uses the same logic for
     # every vehicle. Exact VIN/listing data wins; only stable same-year/model
