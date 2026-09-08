@@ -476,7 +476,7 @@ def api_vehicle_detail(vehicle_id: int):
             "source": "NHTSA vPIC",
         }
 
-    # Enrich blanks (stock #, photo, mileage, torque, towing) from the
+    # Enrich blanks (stock #, photo, mileage, condition, torque, towing) from the
     # vehicle's own detail page on the dealer site. Only runs when
     # something is actually still missing, or when explicitly refreshed.
     force_vdp = request.args.get("refresh_vdp") == "1"
@@ -484,6 +484,7 @@ def api_vehicle_detail(vehicle_id: int):
         vehicle.get("stock_number"),
         vehicle.get("image_url"),
         vehicle.get("mileage"),
+        vehicle.get("condition"),
         vehicle.get("torque"),
     ])
     if (force_vdp or still_missing) and vehicle.get("listing_url"):
@@ -494,7 +495,7 @@ def api_vehicle_detail(vehicle_id: int):
             vdp_data = {}
         if vdp_data:
             store.fill_vdp_fields(vehicle_id, vdp_data)
-            for f in ("stock_number", "image_url", "mileage", "torque", "towing_capacity", "flat_tow"):
+            for f in ("stock_number", "image_url", "mileage", "condition", "torque", "towing_capacity", "flat_tow"):
                 if vdp_data.get(f) and not vehicle.get(f):
                     vehicle[f] = vdp_data[f]
 
