@@ -186,7 +186,7 @@ def build_sales_brain(vehicle: Dict[str, Any], nhtsa: Dict[str, Any] | None = No
     if hp: points.append(f"Horsepower: {hp} hp.")
     if torque_raw: points.append(f"Torque: {torque_raw}.")
     if drive: points.append(f"Drivetrain: {drive}.")
-    if vehicle.get("condition", "").lower() == "new": points.append("New vehicle — lead with factory-new condition and applicable factory warranty coverage.")
+    if _clean(vehicle.get("condition")) == "new": points.append("New vehicle — lead with factory-new condition and applicable factory warranty coverage.")
     if make == "jeep": points.append("Jeep identity and capability are strong talking points when they match the customer's actual use.")
     if "grand cherokee" in model: points += [
         "Grand Cherokee is the middle-ground choice for customers who want SUV comfort with a stronger capability-focused identity.",
@@ -215,20 +215,62 @@ def build_sales_brain(vehicle: Dict[str, Any], nhtsa: Dict[str, Any] | None = No
         vehicle_data = COMPETITIVE_DATA[key].get("Jeep Grand Cherokee")
     competitive = [_comparison(vehicle_data or {}, _competitive_numbers(vehicle.get("year"), make, model, rival), rival) for rival in competitors]
 
-    questions = [
-        "What is the #1 thing this vehicle needs to do for you?",
-        "What other vehicles are you comparing it to?",
-        "Is winter traction, passenger space, towing, fuel economy, technology, performance or payment the biggest priority?",
-        "How often do you tow or haul, and what are you towing?",
-        "What feature did you see in the other vehicle that you don't want to give up?",
-    ]
-    demo = [
-        "Put the customer in the driver's seat and demonstrate the feature tied to their #1 priority.",
-        "If 4x4/capability matters, demonstrate the actual drive-mode/traction controls present on this VIN.",
-        "If family space matters, have the customer sit in every row and open the cargo area themselves.",
-        "If technology matters, demonstrate the actual screen, phone integration and driver-assistance controls on this vehicle.",
-        "Finish the walkaround by tying three demonstrated features directly to what the customer told you they need.",
-    ]
+    questions = []
+    if "grand cherokee" in model:
+        questions = [
+            "Are you comparing this Grand Cherokee to an Explorer, Highlander, Pilot, Traverse, or something else?",
+            "Do you need 4x4/winter capability, or is this mainly a daily driver?",
+            "Is the V6 power and towing capability important for what you plan to pull?",
+            "Which feature or package on this specific Grand Cherokee caught your eye?",
+        ]
+    elif "wrangler" in model:
+        questions = [
+            "Are you planning to take it off-road, or do you mainly want the Wrangler look and open-air experience?",
+            "Do you need a removable top/doors or a specific 4x4 setup?",
+            "Are you comparing it to a Bronco or 4Runner?",
+            "What are you planning to carry or tow with it?",
+        ]
+    elif "gladiator" in model:
+        questions = [
+            "How important is the pickup bed versus the Wrangler-style open-air capability?",
+            "What are you planning to tow or haul?",
+            "Are you comparing it to a Ranger, Tacoma, or Colorado?",
+            "Do you need the truck for work, recreation, or both?",
+        ]
+    elif make == "ram":
+        questions = [
+            "Are you comparing this Ram to an F-Series, Silverado, Sierra, or another truck?",
+            "What are you towing or hauling, and how often?",
+            "Do you need this truck primarily for work, daily driving, or both?",
+            "Which matters more here: payload/towing, comfort, fuel economy, or price?",
+        ]
+    elif "explorer" in model or "highlander" in model or "pilot" in model or "traverse" in model:
+        questions = [
+            "What do you like most about this SUV compared with the Grand Cherokee or the other SUVs you've driven?",
+            "How many passengers do you normally carry?",
+            "Is cargo space, fuel economy, power, AWD/4WD capability, or technology most important?",
+            "Are you looking for something primarily for family use, commuting, or road trips?",
+        ]
+    else:
+        questions = [
+            f"What made you look at this {vehicle.get('make') or ''} {vehicle.get('model') or 'vehicle'} specifically?",
+            "What are you comparing it against?",
+            "Which matters most: price, performance, fuel economy, space, technology, or capability?",
+            "Is there one feature you absolutely do not want to give up?",
+        ]
+
+    demo = []
+    if drive:
+        demo.append(f"Show the customer the actual {drive} system/controls on this vehicle and explain how they use them.")
+    if "grand cherokee" in model:
+        demo.append("Demonstrate the screen, drive modes, seating position, and comfort points that matter to this customer.")
+    elif "wrangler" in model:
+        demo.append("Demonstrate the actual 4x4 controls and open-air/removable-top features present on this vehicle.")
+    elif "gladiator" in model or make == "ram":
+        demo.append("Have the customer test the seating position, storage, bed/utility areas, and the controls they will use most.")
+    else:
+        demo.append("Demonstrate the two or three verified features that directly match the customer's stated priorities.")
+    demo.append("Tie each demonstrated feature back to something the customer told you they wanted.")
     pitch = f"This is the {title or 'vehicle'}"
     if engine: pitch += f", powered by a {engine}"
     if hp: pitch += f" with {hp} horsepower"
