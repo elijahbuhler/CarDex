@@ -1,5 +1,6 @@
 """
-CarDex V2.1.3 — vehicle list + clickable sales report.
+CarDex V2.4.1 — vehicle list + clickable sales report.
+Garage-door boot loader, neon credit, ambient bay animation.
 Replace app.py with this file on GitHub.
 """
 
@@ -13,7 +14,7 @@ from scraper import InventoryEngine, list_adapters
 from store import InventoryStore
 from sales_brain import build_sales_brain
 
-__version__ = "2.4.0-vdp-fix-ui"
+__version__ = "2.4.1-garage-boot"
 
 app = Flask(__name__)
 app.config["JSON_SORT_KEYS"] = False
@@ -44,6 +45,7 @@ INDEX_HTML = r"""
       --violet: #a855f7;
       --violet-deep: #6d28d9;
       --magenta: #e879f9;
+      --neon: #ff4fd8;
       --cyan: #67e8f9;
       --green: #4ade80;
       --amber: #fbbf24;
@@ -57,6 +59,83 @@ INDEX_HTML = r"""
       background: var(--bg); color: var(--ink);
       min-height: 100vh; overflow-x: hidden;
       -webkit-font-smoothing: antialiased;
+    }
+
+    /* ================= GARAGE DOOR BOOT LOADER ================= */
+    #garage {
+      position: fixed; inset: 0; z-index: 999;
+      display: flex; flex-direction: column; justify-content: flex-end;
+      background: #030207;
+      transition: opacity .6s ease .1s;
+    }
+    #garage.done { opacity: 0; pointer-events: none; }
+    .garage-glow {
+      position: absolute; left: 0; right: 0; bottom: 0; height: 0;
+      background: linear-gradient(180deg, transparent, rgba(168,85,247,.35));
+      transition: height .8s ease;
+      pointer-events: none;
+    }
+    #garage.open .garage-glow { height: 100%; }
+    .garage-door {
+      position: relative; width: 100%; height: 100%;
+      display: flex; flex-direction: column;
+      transform: translateY(0);
+      transition: transform 1.9s cubic-bezier(.65,0,.35,1);
+      will-change: transform;
+    }
+    #garage.open .garage-door { transform: translateY(-104%); }
+    .door-panel {
+      flex: 1; position: relative;
+      background: linear-gradient(180deg, #16101f 0%, #0d0916 55%, #090512 100%);
+      border-bottom: 2px solid rgba(0,0,0,.7);
+      box-shadow: inset 0 1px 0 rgba(178,122,255,.14), inset 0 -1px 0 rgba(0,0,0,.8);
+    }
+    .door-panel::after {
+      content: ""; position: absolute; inset: 10% 6%;
+      border: 1px solid rgba(168,85,247,.12); border-radius: 3px;
+    }
+    .door-seal {
+      height: 10px; flex: none;
+      background: linear-gradient(180deg, #241733, #120a1e);
+      box-shadow: 0 2px 24px 4px rgba(232,121,249,.55);
+      border-top: 1px solid rgba(232,121,249,.5);
+    }
+    .garage-label {
+      position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+      font-family: var(--mono); font-size: .72rem; letter-spacing: .5em;
+      text-transform: uppercase; color: var(--muted); text-align: center;
+    }
+    .garage-label b {
+      display: block; font-size: 1.9rem; letter-spacing: -.02em; margin-bottom: .8rem;
+      background: linear-gradient(92deg, #f5d0fe, #a855f7 55%, #67e8f9);
+      -webkit-background-clip: text; background-clip: text; color: transparent;
+      font-family: Inter, sans-serif; font-weight: 900;
+    }
+    .garage-label .hint { animation: blink 1.6s ease-in-out infinite; color: var(--dim); }
+
+    /* ================= NEON "MADE BY ELIJAH" ================= */
+    .neon-credit {
+      position: fixed; right: 18px; bottom: 14px; z-index: 80;
+      font-family: var(--mono); font-size: .68rem; font-weight: 700;
+      letter-spacing: .22em; text-transform: uppercase;
+      color: #ffd7f4; pointer-events: none; user-select: none;
+      text-shadow:
+        0 0 6px rgba(255,79,216,.9),
+        0 0 18px rgba(255,79,216,.65),
+        0 0 42px rgba(255,79,216,.4);
+      animation: neonFlicker 4.5s linear infinite;
+    }
+    .neon-credit::before {
+      content: ""; position: absolute; inset: -8px -12px;
+      border: 1px solid rgba(255,79,216,.28); border-radius: 4px;
+      box-shadow: 0 0 18px rgba(255,79,216,.22), inset 0 0 14px rgba(255,79,216,.1);
+    }
+    @keyframes neonFlicker {
+      0%, 6.5%, 8%, 100% { opacity: 1; }
+      7% { opacity: .55; }
+      52% { opacity: 1; }
+      52.6% { opacity: .7; }
+      53.2% { opacity: 1; }
     }
 
     /* ---------- Ambience: aurora + garage grid + scanlines ---------- */
@@ -96,6 +175,25 @@ INDEX_HTML = r"""
       animation: sweepDown 9s linear infinite;
     }
     @keyframes sweepDown { from { transform: translateY(0); } to { transform: translateY(140vh); } }
+
+    /* ================= SIGNATURE BAY RADAR =================
+       One clean animated element: a slow light pulse that travels
+       around the console card border, like a shop bay sensor loop. */
+    @property --bayAngle { syntax: "<angle>"; initial-value: 0deg; inherits: false; }
+    .bay-frame { position: relative; border-radius: 5px; padding: 1px; margin-bottom: 1.1rem; }
+    .bay-frame::before {
+      content: ""; position: absolute; inset: 0; border-radius: 5px; padding: 1px;
+      background: conic-gradient(from var(--bayAngle),
+        transparent 0deg, transparent 300deg,
+        rgba(232,121,249,.05) 320deg, rgba(232,121,249,.85) 348deg,
+        rgba(103,232,249,.9) 356deg, transparent 360deg);
+      -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+      -webkit-mask-composite: xor; mask-composite: exclude;
+      animation: bayOrbit 7s linear infinite;
+      pointer-events: none;
+    }
+    @keyframes bayOrbit { to { --bayAngle: 360deg; } }
+    .bay-frame .card { margin-bottom: 0; animation: none; }
 
     /* ---------- Header / wordmark ---------- */
     header {
@@ -335,318 +433,307 @@ INDEX_HTML = r"""
 
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after { animation: none !important; transition: none !important; }
+      #garage { display: none !important; }
     }
   </style>
 </head>
 <body>
-  <div class="amb" aria-hidden="true">
+
+  <!-- Garage door boot loader -->
+  <div id="garage" aria-hidden="true">
+    <div class="garage-glow"></div>
+    <div class="garage-door">
+      <div class="garage-label">
+        <b>CarDex</b>
+        <span class="hint">Opening bay door…</span>
+      </div>
+      <div class="door-panel"></div>
+      <div class="door-panel"></div>
+      <div class="door-panel"></div>
+      <div class="door-panel"></div>
+      <div class="door-seal"></div>
+    </div>
+  </div>
+
+  <!-- Neon credit -->
+  <div class="neon-credit">Made by Elijah</div>
+
+  <!-- Ambience -->
+  <div class="amb">
     <div class="amb-aurora"></div>
     <div class="amb-grid"></div>
     <div class="amb-scan"></div>
     <div class="amb-sweep"></div>
   </div>
+
   <header>
-    <h1 class="mark">
-      <span class="slash"></span><span class="car">Car</span><span class="dex">Dex</span>
+    <div class="mark">
+      <span class="slash"></span>
+      <span class="car">Car</span><span class="dex">Dex</span>
       <span class="tag">Midnight Performance Desk</span>
-    </h1>
+    </div>
     <span class="badge">V{{ version }}</span>
     <div class="spacer"></div>
     <div class="live"><span class="dot"></span> Online</div>
   </header>
+
   <main>
-    <div id="list-view">
-      <div class="gauges">
-        <div class="gauge"><div class="k">Units</div><div class="v hot" id="stat-count">—</div><div class="ticks" id="tick-count"></div></div>
-        <div class="gauge"><div class="k">Avg price</div><div class="v" id="stat-avg">—</div><div class="ticks" id="tick-avg"></div></div>
-        <div class="gauge"><div class="k">VIN verified</div><div class="v" id="stat-vin">—</div><div class="ticks" id="tick-vin"></div></div>
-        <div class="gauge"><div class="k">Photographed</div><div class="v" id="stat-photo">—</div><div class="ticks" id="tick-photo"></div></div>
+    <!-- Gauges -->
+    <div class="gauges" id="gauges">
+      <div class="gauge" style="animation-delay:.05s">
+        <div class="k">Units</div><div class="v" id="g-units">—</div>
+        <div class="ticks" data-ticks></div>
       </div>
-      <div class="card">
-        <h2>Inventory Console</h2>
-        <div class="search-row">
-          <input type="text" id="q" placeholder="VIN / STOCK / YEAR / MAKE / MODEL" aria-label="Search inventory" />
-          <button id="btn-search" onclick="doSearch()">Search</button>
-        </div>
-        <div class="actions">
-          <button class="secondary" id="btn-scan" onclick="doScan()">Scan Lithia Missoula</button>
-          <button class="secondary" id="btn-backfill" onclick="doBackfill()">Backfill Data</button>
-          <button class="secondary" onclick="loadAll()">Show All Saved</button>
-        </div>
-        <div class="status" id="status" role="status" aria-live="polite"></div>
+      <div class="gauge" style="animation-delay:.12s">
+        <div class="k">Avg price</div><div class="v hot" id="g-avg">—</div>
+        <div class="ticks" data-ticks></div>
       </div>
-      <div class="card">
-        <h2>Bay — select a unit</h2>
-        <div id="results"><div class="empty">Search or scan to load inventory</div></div>
+      <div class="gauge" style="animation-delay:.19s">
+        <div class="k">VIN verified</div><div class="v" id="g-vin">—</div>
+        <div class="ticks" data-ticks></div>
+      </div>
+      <div class="gauge" style="animation-delay:.26s">
+        <div class="k">Photographed</div><div class="v" id="g-photo">—</div>
+        <div class="ticks" data-ticks></div>
       </div>
     </div>
+
+    <!-- List view -->
+    <div id="list-view">
+      <div class="bay-frame">
+        <div class="card">
+          <h2>Inventory Console</h2>
+          <div class="search-row">
+            <input type="text" id="q" placeholder="Search year / make / model / VIN / stock #…" />
+            <button id="btn-search">Search</button>
+          </div>
+          <div class="actions">
+            <button class="secondary" id="btn-scan">Scan Lithia Missoula</button>
+            <button class="secondary" id="btn-backfill">Backfill Data</button>
+            <button class="ghost" id="btn-all">Show All Saved</button>
+          </div>
+          <div class="status" id="status"></div>
+        </div>
+      </div>
+
+      <div class="card" style="animation-delay:.3s">
+        <h2>Bay — select a unit</h2>
+        <div id="vehicles">
+          <div class="empty">Search or scan to load inventory</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Report view -->
     <div id="report-view">
-      <div class="back-row"><button class="ghost" onclick="showList()">← Back to bay</button></div>
-      <div class="card" id="report-body"><div class="empty">Loading…</div></div>
+      <div class="back-row">
+        <button class="ghost" id="btn-back">← Back to bay</button>
+      </div>
+      <div id="report-body">
+        <div class="card"><div class="empty">Loading…</div></div>
+      </div>
     </div>
   </main>
-  <script>
-    const statusEl = document.getElementById("status");
-    const resultsEl = document.getElementById("results");
-    const listView = document.getElementById("list-view");
-    const reportView = document.getElementById("report-view");
-    const reportBody = document.getElementById("report-body");
 
-    function setStatus(msg, type) {
-      statusEl.textContent = msg || "";
-      statusEl.className = "status" + (type ? " " + type : "");
-    }
-    function setBusy(id, on) {
-      const el = document.getElementById(id);
-      if (!el) return;
-      el.disabled = !!on;
-      el.classList.toggle("busy", !!on);
-    }
-    function money(n) {
-      if (n == null || n === "") return "—";
-      return "$" + Number(n).toLocaleString();
-    }
-    function esc(s) {
-      return String(s == null ? "" : s).replace(/[&<>"']/g, function(c) {
-        return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
-      });
-    }
-    function titleOf(v) {
-      const t = [v.year, v.make, v.model, v.trim].filter(Boolean).join(" ");
-      return t || (v.vin ? ("VIN " + v.vin) : "Vehicle");
-    }
-    function showSkeleton(n) {
-      let out = "";
-      for (let i = 0; i < (n || 5); i++) out += '<div class="loading-shimmer"></div>';
-      resultsEl.innerHTML = out;
-    }
-    function renderTicks(id, ratio) {
-      const host = document.getElementById(id);
-      if (!host) return;
-      const total = 10, on = Math.round(Math.max(0, Math.min(1, ratio || 0)) * total);
-      let out = "";
-      for (let i = 0; i < total; i++) out += '<i class="' + (i < on ? "on" : "") + '"></i>';
-      host.innerHTML = out;
-    }
-    function animateNumber(el, target, formatter) {
-      const dur = 700, t0 = performance.now();
-      function step(now) {
-        const p = Math.min(1, (now - t0) / dur);
-        const eased = 1 - Math.pow(1 - p, 3);
-        el.textContent = formatter(Math.round(target * eased));
-        if (p < 1) requestAnimationFrame(step);
+  <script>
+    const $ = (s) => document.querySelector(s);
+    const statusEl = $("#status");
+
+    /* ---------- Garage door boot ---------- */
+    window.addEventListener("load", () => {
+      setTimeout(() => {
+        const g = $("#garage");
+        g.classList.add("open");
+        setTimeout(() => g.classList.add("done"), 2000);
+        setTimeout(() => g.remove(), 2800);
+      }, 650);
+    });
+
+    /* ---------- Ticks decoration ---------- */
+    document.querySelectorAll("[data-ticks]").forEach((el) => {
+      for (let i = 0; i < 12; i++) {
+        const t = document.createElement("i");
+        if (Math.random() > 0.45) t.classList.add("on");
+        el.appendChild(t);
       }
-      requestAnimationFrame(step);
+    });
+
+    /* ---------- Helpers ---------- */
+    const fmtMoney = (n) =>
+      n == null || isNaN(n) ? "—" : "$" + Number(n).toLocaleString(undefined, { maximumFractionDigits: 0 });
+    const setStatus = (msg, cls = "") => { statusEl.textContent = msg; statusEl.className = "status " + cls; };
+    const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+    async function api(path, opts) {
+      const r = await fetch(path, opts);
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || ("HTTP " + r.status));
+      return j;
     }
-    function updateStats(vehicles) {
-      const list = vehicles || [];
-      const priced = list.filter(function(v) { return v.price != null && v.price !== ""; });
-      const avg = priced.length ? Math.round(priced.reduce(function(a, v) { return a + Number(v.price); }, 0) / priced.length) : 0;
-      const withVin = list.filter(function(v) { return !!v.vin; }).length;
-      const withPhoto = list.filter(function(v) { return !!v.image_url; }).length;
-      const n = function(x) { return x.toLocaleString(); };
-      animateNumber(document.getElementById("stat-count"), list.length, n);
-      animateNumber(document.getElementById("stat-avg"), avg, function(x) { return x ? "$" + x.toLocaleString() : "—"; });
-      animateNumber(document.getElementById("stat-vin"), withVin, n);
-      animateNumber(document.getElementById("stat-photo"), withPhoto, n);
-      renderTicks("tick-count", list.length ? Math.min(1, list.length / 100) : 0);
-      renderTicks("tick-avg", avg ? Math.min(1, avg / 90000) : 0);
-      renderTicks("tick-vin", list.length ? withVin / list.length : 0);
-      renderTicks("tick-photo", list.length ? withPhoto / list.length : 0);
+
+    /* ---------- Gauges ---------- */
+    function renderGauges(summary) {
+      if (!summary) return;
+      $("#g-units").textContent = summary.units ?? summary.count ?? "—";
+      $("#g-avg").textContent = fmtMoney(summary.avg_price);
+      $("#g-vin").textContent = summary.vin_verified ?? summary.with_vin ?? "—";
+      $("#g-photo").textContent = summary.photographed ?? summary.with_photo ?? "—";
     }
+
+    /* ---------- Vehicle list ---------- */
     function renderVehicles(vehicles) {
-      updateStats(vehicles);
+      const box = $("#vehicles");
       if (!vehicles || !vehicles.length) {
-        resultsEl.innerHTML = '<div class="empty">No vehicles found yet</div>';
+        box.innerHTML = '<div class="empty">No units found</div>';
         return;
       }
-      resultsEl.innerHTML = vehicles.map((v, i) => {
-        const miles = v.mileage != null ? Number(v.mileage).toLocaleString() + " mi" : "— mi";
-        return '<div class="vehicle" tabindex="0" style="animation-delay:' + Math.min(i,14)*28 + 'ms" onclick="openReport(' + v.id + ')" onkeydown="if(event.key===\'Enter\')openReport(' + v.id + ')">' +
-          '<div class="v-main"><div class="title">' + esc(titleOf(v)) + '</div>' +
-          '<div class="meta">' +
-            '<span class="tagchip">VIN ' + esc(v.vin || "—") + '</span>' +
-            '<span class="tagchip">STK ' + esc(v.stock_number || "—") + '</span>' +
-            '<span class="tagchip">' + miles + '</span>' +
-            '<span class="tagchip">' + esc(v.condition || "—") + '</span>' +
-          '</div></div>' +
-          '<div class="price">' + money(v.price) + '</div></div>';
-      }).join("");
+      box.innerHTML = vehicles.map((v, i) => `
+        <div class="vehicle" style="animation-delay:${Math.min(i * 0.04, 0.5)}s"
+             tabindex="0" role="button" data-id="${v.id}">
+          <div class="v-main">
+            <div class="title">${esc([v.year, v.make, v.model].filter(Boolean).join(" ")) || "Unknown unit"}${v.trim ? " " + esc(v.trim) : ""}</div>
+            <div class="meta">
+              ${v.condition ? `<span class="tagchip">${esc(v.condition)}</span>` : ""}
+              ${v.stock_number ? `<span class="tagchip">STK ${esc(v.stock_number)}</span>` : ""}
+              ${v.vin ? `<span class="tagchip">VIN ${esc(v.vin)}</span>` : ""}
+              ${v.mileage != null ? `<span class="tagchip">${Number(v.mileage).toLocaleString()} mi</span>` : ""}
+              ${v.exterior_color ? `<span class="tagchip">${esc(v.exterior_color)}</span>` : ""}
+            </div>
+          </div>
+          <div class="price">${fmtMoney(v.price)}</div>
+        </div>`).join("");
+      box.querySelectorAll(".vehicle").forEach((el) => {
+        const open = () => openReport(el.dataset.id);
+        el.addEventListener("click", open);
+        el.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } });
+      });
     }
-    async function doSearch() {
-      const q = document.getElementById("q").value.trim();
-      setStatus("Searching…");
-      setBusy("btn-search", true);
-      showSkeleton(5);
+
+    async function loadVehicles(params = "") {
+      $("#vehicles").innerHTML = '<div class="loading-shimmer"></div>'.repeat(4);
       try {
-        let url = "/api/vehicles?limit=500";
-        if (q) url += "&q=" + encodeURIComponent(q);
-        const r = await fetch(url);
-        const data = await r.json();
-        renderVehicles(data.vehicles || []);
-        const total = (data.summary && data.summary.active) || data.count || 0;
-        setStatus(total + " vehicle(s)", "ok");
-      } catch (e) { setStatus("Search failed", "err"); resultsEl.innerHTML = '<div class="empty">Search failed</div>'; }
-      setBusy("btn-search", false);
-    }
-    async function loadAll() {
-      document.getElementById("q").value = "";
-      await doSearch();
-    }
-    async function doScan() {
-      setStatus("Scanning Lithia public inventory… this can take up to a minute.");
-      setBusy("btn-scan", true);
-      try {
-        const r = await fetch("/api/discover", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            inventory_url: "https://www.lithiachryslermissoula.com/all-inventory/index.htm",
-            name: "Lithia Chrysler Jeep Dodge Ram Missoula"
-          })
-        });
-        const data = await r.json();
-        if (data.ok) {
-          setStatus("Scan complete — found " + (data.vehicles_found || 0) + " vehicles", "ok");
-          await loadAll();
-        } else {
-          setStatus("Scan problem: " + (data.error || "unknown"), "err");
-        }
-      } catch (e) { setStatus("Scan failed — " + e.message, "err"); }
-      setBusy("btn-scan", false);
-    }
-    async function doBackfill() {
-      setStatus("Fast enrichment: pulling public Lithia stock, mileage, photos and specs…");
-      setBusy("btn-backfill", true);
-      let totalUpdated = 0;
-      try {
-        while (true) {
-          const r = await fetch("/api/backfill_nhtsa", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ limit: 24 })
-          });
-          const data = await r.json();
-          if (!data.ok) { setStatus("Backfill problem: " + (data.error || "unknown"), "err"); break; }
-          totalUpdated += data.updated;
-          if (data.checked === 0) {
-            setStatus(totalUpdated ? ("Backfill complete — updated " + totalUpdated + " vehicle(s)") : "Public vehicle info is already filled in", "ok");
-            break;
-          }
-          setStatus("Backfilled " + totalUpdated + " so far — " + data.remaining + " left…");
-        }
-      } catch (e) { setStatus("Backfill failed — " + e.message, "err"); }
-      setBusy("btn-backfill", false);
-      await loadAll();
-    }
-    function showList() {
-      reportView.style.display = "none";
-      listView.style.display = "block";
-    }
-    function showReport() {
-      listView.style.display = "none";
-      reportView.style.display = "block";
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    }
-    function chip(text, kind) {
-      return '<span class="chip ' + (kind || "") + '">' + esc(text) + "</span>";
-    }
-    function specRow(label, value) {
-      const display = value != null && value !== "" ? esc(value) : "Not available in public vehicle data";
-      const cls = value != null && value !== "" ? "" : "";
-      return '<div class="spec"><div class="label">' + label + '</div><div class="value ' + cls + '">' + display + "</div></div>";
-    }
-    function buildSales(v, nhtsa) {
-      const raw = (v.sales_brain && typeof v.sales_brain === "object") ? v.sales_brain : {};
-      return {
-        points: Array.isArray(raw.points) ? raw.points : [],
-        objections: Array.isArray(raw.objections) ? raw.objections : [],
-        pitch: raw.pitch || "",
-        competitors: Array.isArray(raw.competitors) ? raw.competitors : [],
-        questions: Array.isArray(raw.questions) ? raw.questions : [],
-        demo: Array.isArray(raw.demo) ? raw.demo : [],
-        fallback: raw.fallback || {},
-        resolved: raw.resolved || {}
-      };
-    }
-    async function openReport(id) {
-      showReport();
-      reportBody.innerHTML = '<div class="loading-shimmer" style="height:180px"></div><div class="loading-shimmer"></div><div class="loading-shimmer"></div>';
-      try {
-        const r = await fetch("/api/vehicles/" + id);
-        const data = await r.json();
-        if (!data.vehicle) {
-          reportBody.innerHTML = '<div class="empty">Vehicle not found</div>';
-          return;
-        }
-        const v = data.vehicle;
-        const nhtsa = data.nhtsa || v.nhtsa || null;
-        const sales = buildSales(v, nhtsa);
-        const title = titleOf(v);
-        const hpValue = sales.resolved.engine_hp || (nhtsa && nhtsa.engine_hp);
-        const hp = hpValue ? (hpValue + " hp") : null;
-        const engineValue = v.engine || sales.resolved.engine;
-        const torqueValue = v.torque || sales.resolved.torque;
-        const bodyValue = sales.resolved.body_style || v.body_style || (nhtsa && nhtsa.body_style);
-        const photo = v.image_url
-          ? '<div class="report-photo"><img src="' + esc(v.image_url) + '" alt="" loading="lazy" /></div>'
-          : '<div class="report-photo">No photo yet</div>';
-        const chips = [];
-        if (v.condition) chips.push(chip(v.condition, "ok"));
-        if (v.vin) chips.push(chip("VIN verified", "ok"));
-        else chips.push(chip("VIN missing", "warn"));
-        if (!v.year || !v.make || !v.model) chips.push(chip("Y/M/M incomplete", "warn"));
-        if (!v.trim) chips.push(chip("Trim not published", "warn"));
-        reportBody.innerHTML =
-          '<div class="report-hero">' + photo +
-          '<div style="flex:1;min-width:200px;">' +
-          '<div class="report-title">' + esc(title) + '</div>' +
-          '<div class="report-price">' + money(v.price) + '</div>' +
-          '<div class="report-sub">' + esc(v.dealership_name || "Lithia Missoula") + '</div>' +
-          '<div class="chips">' + chips.join("") + '</div>' +
-          (v.listing_url ? '<div style="margin-top:0.8rem;"><a class="link" href="' + esc(v.listing_url) + '" target="_blank" rel="noopener">Open listing on dealership site →</a></div>' : "") +
-          '</div></div>' +
-          '<div class="section-title">Basics</div><div class="grid2">' +
-          specRow("VIN", v.vin) + specRow("Stock #", v.stock_number) +
-          specRow("Mileage", v.mileage != null ? Number(v.mileage).toLocaleString() + " mi" : null) +
-          specRow("Condition", v.condition) +
-          specRow("Year", v.year) + specRow("Make", v.make) +
-          specRow("Model", v.model) + specRow("Trim", v.trim) +
-          '</div>' +
-          '<div class="section-title">Specs (public listing / model-year reference)</div><div class="grid2">' +
-          specRow("Engine", engineValue || sales.resolved.engine) +
-          specRow("Horsepower", hp || sales.resolved.engine_hp) +
-          specRow("Drivetrain", v.drivetrain || sales.resolved.drivetrain || (nhtsa && nhtsa.drivetrain)) +
-          specRow("Transmission", v.transmission || sales.resolved.transmission) +
-          specRow("Fuel", (nhtsa && nhtsa.fuel) || v.fuel_economy) +
-          specRow("Body", bodyValue || sales.resolved.body_style) +
-          specRow("Torque", torqueValue || sales.resolved.torque) +
-          specRow("Flat-tow", sales.resolved.flat_tow || v.flat_tow) +
-          specRow("Towing capacity", sales.resolved.towing_capacity || v.towing_capacity) +
-          '</div>' +
-          '<div class="section-title">Sales Brain — Best selling points</div>' +
-          (sales.points.length ? sales.points.map(function(p){ return '<div class="bullet">' + esc(p) + '</div>'; }).join("") : '<div class="bullet warn">No selling points were returned for this vehicle. The Sales Brain needs to be connected to the current sales_brain.py.</div>') +
-          (sales.fallback && sales.fallback.source ? '<div class="section-title">Smart fallback</div><div class="pitch">Some vehicle-specific data was unavailable, so CarDex filled only stable same-year/model facts. Configuration-dependent items are described as model-level references when exact listing data is unavailable.</div>' : '') +
-          (sales.competitors.length ? '<div class="section-title">Competitive intelligence</div>' + sales.competitors.map(function(c){
-            var details = '<div class="bullet"><strong>' + esc(c.name) + '</strong>: ' + (c.hp != null ? esc(c.hp) + ' hp' : 'Horsepower: manufacturer model reference') + (c.torque != null ? ' / ' + esc(c.torque) + ' lb-ft' : '') + (c.engine ? ' • ' + esc(c.engine) : '') + (c.max_towing != null ? ' • up to ' + Number(c.max_towing).toLocaleString() + ' lbs towing' : (c.towing_label ? ' • ' + esc(c.towing_label) : '')) + '</div>';
-            var compare = (c.comparison || []).map(function(x){ return '<div class="bullet">' + esc(x) + '</div>'; }).join('');
-            return details + '<div class="bullet">' + esc(c.angle || '') + '</div>' + compare + (c.edge ? '<div class="pitch"><strong>How to sell it:</strong> ' + esc(c.edge) + '</div>' : '');
-          }).join('') + '<div style="font-size:.76rem;opacity:.7;margin-top:.5rem;">Competitor numbers are model-level references, not VIN-to-VIN matches. Maximum towing varies by configuration.</div>' : '') +
-          '<div class="section-title">Customer pitch</div><div class="pitch">' + esc(sales.pitch || "Start by asking what matters most to the customer, then connect the vehicle's verified equipment to that need.") + '</div>' +
-          '<div class="section-title">Questions to ask</div>' +
-          (sales.questions.length ? sales.questions.map(function(p){ return '<div class="bullet">' + esc(p) + '</div>'; }).join("") : '<div class="bullet">What is the #1 thing this vehicle needs to do for you?</div>') +
-          '<div class="section-title">Test-drive / demo focus</div>' +
-          (sales.demo.length ? sales.demo.map(function(p){ return '<div class="bullet">' + esc(p) + '</div>'; }).join("") : '<div class="bullet">Demonstrate the verified feature that matters most to the customer.</div>') +
-          '<div class="section-title">Know before you sell</div>' +
-          sales.objections.map(function(p){ return '<div class="bullet warn">' + esc(p) + '</div>'; }).join("");
+        const j = await api("/api/vehicles" + params);
+        renderVehicles(j.vehicles);
+        renderGauges(j.summary);
+        setStatus(j.count + " unit(s) on the board", "ok");
       } catch (e) {
-        reportBody.innerHTML = '<div class="empty">Failed to load report</div>';
+        $("#vehicles").innerHTML = '<div class="empty">Load failed</div>';
+        setStatus(e.message, "err");
       }
     }
-    document.getElementById("q").addEventListener("keydown", function(e) {
-      if (e.key === "Enter") doSearch();
+
+    /* ---------- Report ---------- */
+    function spec(label, value, verify = false) {
+      const show = value == null || value === "" ? "—" : esc(value);
+      return `<div class="spec"><div class="label">${label}</div>
+        <div class="value${verify && (value == null || value === "") ? " verify" : ""}">${verify && (value == null || value === "") ? "Verify" : show}</div></div>`;
+    }
+
+    function renderReport(v, events) {
+      const sb = v.sales_brain || {};
+      const title = [v.year, v.make, v.model].filter(Boolean).join(" ") || "Vehicle";
+      $("#report-body").innerHTML = `
+        <div class="card">
+          <div class="report-hero">
+            <div class="report-photo">
+              ${v.image_url ? `<img src="${esc(v.image_url)}" alt="${esc(title)}" loading="lazy">` : "No photo"}
+            </div>
+            <div style="flex:1;min-width:240px">
+              <div class="report-title">${esc(title)}${v.trim ? " " + esc(v.trim) : ""}</div>
+              <div class="report-price">${fmtMoney(v.price)}</div>
+              <div class="report-sub">${esc(v.condition || "")} ${v.stock_number ? "· STK " + esc(v.stock_number) : ""}</div>
+              <div class="chips">
+                ${v.vin ? `<span class="chip ok">VIN ${esc(v.vin)}</span>` : `<span class="chip warn">No VIN</span>`}
+                ${v.mileage != null ? `<span class="chip">${Number(v.mileage).toLocaleString()} mi</span>` : ""}
+                ${v.dealership_name ? `<span class="chip">${esc(v.dealership_name)}</span>` : ""}
+              </div>
+              ${v.listing_url ? `<p style="margin-top:.8rem"><a class="link" href="${esc(v.listing_url)}" target="_blank" rel="noopener">View dealer listing ↗</a></p>` : ""}
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Specification</h2>
+          <div class="grid2">
+            ${spec("Engine", v.engine)}
+            ${spec("Horsepower", v.engine_hp ? v.engine_hp + " hp" : null)}
+            ${spec("Torque", v.torque)}
+            ${spec("Transmission", v.transmission)}
+            ${spec("Drivetrain", v.drivetrain)}
+            ${spec("Body style", v.body_style)}
+            ${spec("Fuel", v.fuel || (v.nhtsa && v.nhtsa.fuel))}
+            ${spec("Towing", v.towing_capacity)}
+            ${spec("Exterior", v.exterior_color)}
+            ${spec("Interior", v.interior_color)}
+          </div>
+        </div>
+
+        ${(sb.points && sb.points.length) ? `<div class="card"><h2>Selling Points</h2>${sb.points.map(p => `<div class="bullet">${esc(p)}</div>`).join("")}</div>` : ""}
+        ${sb.pitch ? `<div class="card"><h2>Elevator Pitch</h2><div class="pitch">${esc(sb.pitch)}</div></div>` : ""}
+        ${(sb.objections && sb.objections.length) ? `<div class="card"><h2>Objection Handling</h2>${sb.objections.map(o => `<div class="bullet warn">${esc(o)}</div>`).join("")}</div>` : ""}
+        ${(sb.questions && sb.questions.length) ? `<div class="card"><h2>Ask the Customer</h2>${sb.questions.map(q => `<div class="bullet">${esc(q)}</div>`).join("")}</div>` : ""}
+        ${(events && events.length) ? `<div class="card"><h2>History</h2>${events.map(e => `<div class="bullet">${esc(e.event_type || e.type || "event")} — ${esc(e.created_at || "")}</div>`).join("")}</div>` : ""}
+      `;
+      $("#list-view").style.display = "none";
+      $("#report-view").style.display = "block";
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+
+    async function openReport(id) {
+      $("#list-view").style.display = "none";
+      $("#report-view").style.display = "block";
+      $("#report-body").innerHTML = '<div class="card"><div class="loading-shimmer"></div><div class="loading-shimmer"></div><div class="loading-shimmer"></div></div>';
+      try {
+        const j = await api("/api/vehicles/" + id);
+        renderReport(j.vehicle, j.events);
+      } catch (e) {
+        $("#report-body").innerHTML = `<div class="card"><div class="empty">Report failed: ${esc(e.message)}</div></div>`;
+      }
+    }
+
+    $("#btn-back").addEventListener("click", () => {
+      $("#report-view").style.display = "none";
+      $("#list-view").style.display = "block";
     });
-    loadAll();
+
+    /* ---------- Actions ---------- */
+    $("#btn-search").addEventListener("click", () => {
+      const q = $("#q").value.trim();
+      loadVehicles(q ? "?q=" + encodeURIComponent(q) : "");
+    });
+    $("#q").addEventListener("keydown", (e) => { if (e.key === "Enter") $("#btn-search").click(); });
+    $("#btn-all").addEventListener("click", () => { $("#q").value = ""; loadVehicles(); });
+
+    $("#btn-scan").addEventListener("click", async (e) => {
+      const btn = e.currentTarget;
+      btn.disabled = true; btn.classList.add("busy");
+      setStatus("Scanning Lithia Missoula…");
+      try {
+        const j = await api("/api/discover", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ inventory_url: "https://www.lithia.com/inventory.htm", name: "Lithia Missoula" }),
+        });
+        setStatus(j.ok ? "Scan complete" : (j.error || "Scan finished"), j.ok ? "ok" : "err");
+        loadVehicles();
+      } catch (err) { setStatus(err.message, "err"); }
+      finally { btn.disabled = false; btn.classList.remove("busy"); }
+    });
+
+    $("#btn-backfill").addEventListener("click", async (e) => {
+      const btn = e.currentTarget;
+      btn.disabled = true; btn.classList.add("busy");
+      setStatus("Backfilling public data…");
+      try {
+        const j = await api("/api/backfill_nhtsa", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+        setStatus(`Backfill: ${j.updated} updated, ${j.remaining} remaining`, "ok");
+        loadVehicles($("#q").value.trim() ? "?q=" + encodeURIComponent($("#q").value.trim()) : "");
+      } catch (err) { setStatus(err.message, "err"); }
+      finally { btn.disabled = false; btn.classList.remove("busy"); }
+    });
+
+    /* ---------- Initial load ---------- */
+    loadVehicles();
   </script>
 </body>
 </html>
@@ -724,8 +811,6 @@ def api_backfill_nhtsa():
                 changed = True
         except Exception:
             pass
-        # NHTSA is supplemental; don't make the user wait for it before the
-        # public Lithia fields are saved.
         try:
             from vin_decode import decode_vin
             nhtsa = decode_vin(vin)
@@ -754,6 +839,7 @@ def api_backfill_nhtsa():
         "updated": updated,
         "remaining": remaining,
     })
+
 
 @app.get("/api/vehicles")
 def api_vehicles():
@@ -796,21 +882,14 @@ def api_vehicle_detail(vehicle_id: int):
             nhtsa = None
 
     if nhtsa:
-        # Fill blanks only — never overwrite a verified listing value with empty
         fill_map = {
-            "year": "year",
-            "make": "make",
-            "model": "model",
-            "trim": "trim",
-            "body_style": "body_style",
-            "drivetrain": "drivetrain",
-            "transmission": "transmission",
-            "engine": "engine",
+            "year": "year", "make": "make", "model": "model", "trim": "trim",
+            "body_style": "body_style", "drivetrain": "drivetrain",
+            "transmission": "transmission", "engine": "engine",
         }
         for src, dest in fill_map.items():
             if nhtsa.get(src) and not vehicle.get(dest):
                 vehicle[dest] = nhtsa[src]
-        # Title-case make for display
         if vehicle.get("make"):
             vehicle["make"] = str(vehicle["make"]).title()
         vehicle["nhtsa"] = {
@@ -824,26 +903,17 @@ def api_vehicle_detail(vehicle_id: int):
             "source": "NHTSA vPIC",
         }
 
-    # Enrich blanks (stock #, photo, mileage, condition, torque, towing) from the
-    # vehicle's own detail page on the dealer site. Only runs when
-    # something is actually still missing, or when explicitly refreshed.
     force_vdp = request.args.get("refresh_vdp") == "1"
     still_missing = not all([
-        vehicle.get("stock_number"),
-        vehicle.get("image_url"),
-        vehicle.get("mileage"),
-        vehicle.get("condition"),
-        vehicle.get("torque"),
-        vehicle.get("engine_hp"),
+        vehicle.get("stock_number"), vehicle.get("image_url"), vehicle.get("mileage"),
+        vehicle.get("condition"), vehicle.get("torque"), vehicle.get("engine_hp"),
         vehicle.get("transmission"),
     ])
     listing_path = str(vehicle.get("listing_url") or "").lower()
-    is_new_listing = str(vehicle.get("condition") or "").strip().lower() == "new" or "/new/" in listing_path
-    # A previous CarDex version incorrectly stored the VIN's last 8 as the
-    # stock number for some USED vehicles. Treat that exact pattern as stale
-    # for used inventory so the public Lithia VDP gets a chance to replace it.
-    listing_path = str(vehicle.get("listing_url") or "").lower()
-    is_used_listing = str(vehicle.get("condition") or "").strip().lower() in ("used", "certified pre-owned", "cpo") or "/used/" in listing_path or "/certified/" in listing_path
+    is_used_listing = (
+        str(vehicle.get("condition") or "").strip().lower() in ("used", "certified pre-owned", "cpo")
+        or "/used/" in listing_path or "/certified/" in listing_path
+    )
     if is_used_listing and vehicle.get("vin") and vehicle.get("stock_number"):
         if str(vehicle["stock_number"]).strip().upper() == str(vehicle["vin"]).strip().upper()[-8:]:
             vehicle["stock_number"] = None
@@ -854,17 +924,11 @@ def api_vehicle_detail(vehicle_id: int):
             vdp_data = scrape_vdp(vehicle["listing_url"], known_vin=vehicle.get("vin"))
         except Exception:
             vdp_data = {}
-        # Always run the store cleanup path. This removes an old USED VIN-suffix
-        # stock number even if a public VDP request temporarily returns no data.
         try:
             store.fill_vdp_fields(vehicle_id, vdp_data or {})
         except Exception:
             pass
         if vdp_data:
-            # NEW Lithia rule: the stock number shown in CarDex is always
-            # the last 8 characters of the VIN. Do not substitute a different
-            # stock value for NEW vehicles. USED vehicles continue to use the
-            # actual stock number found on the public Lithia VDP.
             condition_now = str(vdp_data.get("condition") or vehicle.get("condition") or "").strip().lower()
             listing_path = str(vehicle.get("listing_url") or "").lower()
             is_new = condition_now == "new" or "/new/" in listing_path
@@ -875,19 +939,14 @@ def api_vehicle_detail(vehicle_id: int):
                     vdp_data["condition"] = vdp_data.get("condition") or "New"
 
             store.fill_vdp_fields(vehicle_id, vdp_data)
-            for f in ("stock_number", "image_url", "mileage", "condition", "torque", "engine_hp", "transmission", "engine", "towing_capacity", "flat_tow"):
+            for f in ("stock_number", "image_url", "mileage", "condition", "torque",
+                      "engine_hp", "transmission", "engine", "towing_capacity", "flat_tow"):
                 if vdp_data.get(f) is not None and vdp_data.get(f) != "":
                     vehicle[f] = vdp_data[f]
-            # For NEW inventory, prefer the dealership website's mileage when
-            # it explicitly publishes one. Do not invent a mileage value.
             if is_new and vdp_data.get("mileage") is not None:
                 vehicle["mileage"] = vdp_data["mileage"]
 
-    # Final NEW-vehicle stock fallback. If the public VDP did not expose a
-    # stock number at all, Lithia's NEW stock number is the VIN's last 8.
-    # USED vehicles intentionally do not use this fallback.
     # Final NEW-vehicle rule: always use VIN last 8 as stock number.
-    # USED vehicles intentionally do not use this fallback.
     listing_path = str(vehicle.get("listing_url") or "").lower()
     if ((str(vehicle.get("condition") or "").strip().lower() == "new" or "/new/" in listing_path)
             and vehicle.get("vin")):
@@ -900,12 +959,7 @@ def api_vehicle_detail(vehicle_id: int):
             except Exception:
                 pass
 
-    # Sales Brain is built server-side so the report uses the same logic for
-    # every vehicle. Exact VIN/listing data wins; only stable same-year/model
-    # fallback facts are added when the exact field is unavailable.
-    # Sales Brain must never be able to take down the vehicle report.
-    # If a scraped field has an unexpected type/value, return the vehicle
-    # report with a safe fallback instead of a 500 error.
+    # Sales Brain must never take down the vehicle report.
     try:
         vehicle["sales_brain"] = build_sales_brain(vehicle, nhtsa)
     except Exception as exc:
