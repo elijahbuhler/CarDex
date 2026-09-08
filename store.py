@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 # Prefer CARDEX_DB_PATH env var (useful on Render). Fall back to app folder, then /tmp.
-_APP_DIR = Path(__file__).resolve().parent.parent
+_APP_DIR = Path(__file__).resolve().parent
 DEFAULT_DB_PATH = Path(os.environ.get("CARDEX_DB_PATH", str(_APP_DIR / "cardex_inventory.db")))
 
 
