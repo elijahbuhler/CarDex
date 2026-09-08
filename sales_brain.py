@@ -106,6 +106,68 @@ MODEL_YEAR_DATA: Dict[Tuple[int, str, str], Dict[str, Any]] = {
         "source": "2020 Chevrolet Traverse model information",
     },
 
+    # 2025 Grand Cherokee L and common model-year competitors.
+    (2025, "jeep", "grand cherokee l"): {
+        "engine": "3.6L Pentastar V6",
+        "hp": 293,
+        "torque": 260,
+        "transmission": "8-speed automatic",
+        "drivetrain": "RWD or available 4x4",
+        "body_style": "3-row SUV",
+        "towing": "Up to 6,200 lbs with the proper towing equipment",
+        "flat_tow": "Only 4WD configurations with the required 4WD low-range transfer case can be flat-towed; do not assume a Laredo is flat-towable without verifying the actual drivetrain.",
+        "feature_summary": "Three-row SUV seating up to seven; 3.6L V6; available 4x4; 17.2 cu. ft. behind the third row and up to 84.6 cu. ft. with rows folded.",
+        "source": "2025 Jeep Grand Cherokee L model specifications / owner's manual",
+    },
+    (2025, "ford", "explorer"): {
+        "engine": "2.3L EcoBoost I-4",
+        "hp": 300,
+        "torque": 310,
+        "transmission": "10-speed automatic",
+        "drivetrain": "RWD or available 4WD",
+        "body_style": "3-row SUV",
+        "towing": "Up to 5,000 lbs when properly equipped",
+        "flat_tow": "Verify exact configuration/owner manual",
+        "feature_summary": "Three-row SUV; standard Class III trailer tow package; available 3.0L EcoBoost V6 on Platinum; available 4WD and Terrain Management; BlueCruise available on select trims.",
+        "source": "2025 Ford Explorer technical specifications / Ford model information",
+    },
+    (2025, "toyota", "grand highlander"): {
+        "engine": "2.4L turbo I4 gas (gas model reference)",
+        "hp": 265,
+        "torque": 310,
+        "transmission": "8-speed automatic (gas models)",
+        "drivetrain": "FWD or available AWD",
+        "body_style": "3-row SUV",
+        "towing": "Up to 5,000 lbs",
+        "flat_tow": "Verify exact configuration/owner manual",
+        "feature_summary": "Three-row SUV with seating up to eight; up to 97.5 cu. ft. of cargo space; available AWD; gas, hybrid and Hybrid MAX powertrains; Toyota Safety Sense 3.0.",
+        "source": "2025 Toyota Grand Highlander model information",
+    },
+    (2025, "honda", "pilot"): {
+        "engine": "3.5L V6",
+        "hp": 285,
+        "torque": 262,
+        "transmission": "10-speed automatic",
+        "drivetrain": "2WD or available AWD",
+        "body_style": "3-row SUV",
+        "towing": "Up to 5,000 lbs when properly equipped (AWD)",
+        "flat_tow": "Verify exact configuration/owner manual",
+        "feature_summary": "Three-row SUV; available i-VTM4 AWD; TrailSport adds off-road-oriented equipment; 10-speed automatic; towing varies by drivetrain/load conditions.",
+        "source": "2025 Honda Pilot model information",
+    },
+    (2025, "chevrolet", "traverse"): {
+        "engine": "2.5L turbocharged I4",
+        "hp": 328,
+        "torque": 326,
+        "transmission": "8-speed automatic",
+        "drivetrain": "FWD or available AWD",
+        "body_style": "3-row SUV",
+        "towing": "Up to 5,000 lbs with included trailering equipment",
+        "flat_tow": "Verify exact configuration/owner manual",
+        "feature_summary": "Three-row SUV; 7- or available 8-passenger seating; up to 98 cu. ft. cargo behind the first row; available AWD and Super Cruise on applicable configurations.",
+        "source": "2025 Chevrolet Traverse model information",
+    },
+
     # 2021 common comparisons.
     (2021, "jeep", "grand cherokee"): {
         "engine": "3.6L Pentastar V6",
@@ -307,11 +369,39 @@ def _comparison(vehicle: Dict[str, Any], rival: str) -> Dict[str, Any]:
     else:
         angle = f"Use the {rival} as a model-year reference. Compare the customer's priorities—power, space, drivetrain, towing, technology and price—against this vehicle's verified equipment."
 
-    edge = "No raw advantage established; sell the fit and verified equipment."
-    if actual_hp is not None and rival_hp is not None and actual_hp > rival_hp:
-        edge = f"Power advantage: this vehicle's reference power is {int(actual_hp)} hp vs {int(rival_hp)} hp."
-    elif actual_hp is not None and rival_hp is not None and actual_hp < rival_hp:
-        edge = f"Don't claim a horsepower advantage—the {rival} reference is stronger at {int(rival_hp)} hp vs {int(actual_hp)} hp."
+    # Give the salesperson an actual, evidence-based reason to sell the vehicle.
+    # This is model-year comparison logic, not competitor-VIN matching.
+    edge_parts: List[str] = []
+    rival_lower = rival.lower()
+    if base.get("towing") and rival_data.get("towing"):
+        import re
+        def _tow_num(x: Any) -> Optional[int]:
+            m = re.search(r"([0-9,]+)\s*lbs", str(x or ""))
+            return int(m.group(1).replace(",", "")) if m else None
+        a_tow, r_tow = _tow_num(base.get("towing")), _tow_num(rival_data.get("towing"))
+        if a_tow and r_tow and a_tow > r_tow:
+            edge_parts.append(f"Towing: {a_tow:,} lbs max reference vs {r_tow:,} lbs for the {rival}.")
+    if "grand cherokee l" in f"{make} {model}" and rival_lower in {"ford explorer", "toyota grand highlander"}:
+        edge_parts.append("Three-row practicality: the Grand Cherokee L gives the customer three rows while keeping Jeep's available 4x4/capability story in the conversation.")
+    if "grand cherokee" in f"{make} {model}" and "4runner" in rival_lower:
+        edge_parts.append("The Grand Cherokee can be positioned as the more road-oriented SUV while still offering available 4x4 capability; don't claim off-road hardware that this VIN doesn't have.")
+    if "grand cherokee" in f"{make} {model}" and rival_lower in {"toyota highlander", "honda pilot", "chevrolet traverse"}:
+        edge_parts.append("Capability angle: use the Grand Cherokee's available 4x4 systems and model-specific towing reference when those priorities match the customer.")
+    if actual_hp is not None and rival_hp is not None:
+        if actual_hp > rival_hp:
+            edge_parts.append(f"Power: {int(actual_hp)} hp vs {int(rival_hp)} hp gives this vehicle the horsepower edge.")
+        elif actual_hp < rival_hp:
+            edge_parts.append(f"Power: don't claim a horsepower edge—the {rival} reference is {int(rival_hp)} hp vs {int(actual_hp)} hp.")
+    if not edge_parts:
+        # Even when no numeric edge exists, give the salesperson a concrete
+        # model-level positioning statement instead of the old generic filler.
+        if "grand cherokee l" in f"{make} {model}":
+            edge_parts.append(f"Positioning: compare the Grand Cherokee L's available 4x4/capability and model-year equipment against the {rival}'s strengths; use the customer's priorities to decide the winner.")
+        elif "grand cherokee" in f"{make} {model}":
+            edge_parts.append(f"Positioning: the Grand Cherokee brings available 4x4 capability and Jeep's SUV format to the comparison; verify this vehicle's actual equipment before claiming a specific feature.")
+        else:
+            edge_parts.append(f"Positioning: use the {rival} model-year facts to show a real trade-off rather than claiming a blanket advantage.")
+    edge = " ".join(edge_parts)
 
     return {
         "name": rival,
