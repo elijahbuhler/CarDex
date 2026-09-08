@@ -120,6 +120,7 @@ class InventoryStore:
             )
             # Migrations for columns added after the initial release.
             # Safe to run every startup — no-ops once the column exists.
+            self._add_column_if_missing(conn, "vehicles", "engine_hp", "INTEGER")
             self._add_column_if_missing(conn, "vehicles", "torque", "TEXT")
             self._add_column_if_missing(conn, "vehicles", "towing_capacity", "TEXT")
             self._add_column_if_missing(conn, "vehicles", "flat_tow", "TEXT")
