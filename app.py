@@ -299,11 +299,7 @@ INDEX_HTML = r"""
           '<div class="section-title">Best selling points</div>' +
           sales.points.map(function(p){ return '<div class="bullet">' + p + '</div>'; }).join("") +
           (sales.fallback && sales.fallback.source ? '<div class="section-title">Smart fallback</div><div class="pitch">A listing/VIN-specific value was unavailable, so CarDex used high-confidence same-year/model knowledge for stable facts only. Configuration-dependent specs are still marked VERIFY.</div>' : '') +
-          (sales.competitors.length ? '<div class="section-title">Competitive intelligence</div>' + sales.competitors.map(function(c){
-            var nums = c.data_available ? '<div class="spec"><div class="label">Competitor power</div><div class="value">' + (c.hp || 'VERIFY') + ' hp / ' + (c.torque || 'VERIFY') + ' lb-ft</div></div>' + '<div class="spec"><div class="label">Competitor engine</div><div class="value">' + (c.engine || 'VERIFY') + '</div></div>' + '<div class="spec"><div class="label">Max towing</div><div class="value">' + (c.max_towing ? c.max_towing.toLocaleString() + ' lbs*' : 'VERIFY') + '</div></div>' : '';
-            var compare = (c.comparison || []).map(function(x){ return '<div class="bullet">' + x + '</div>'; }).join('');
-            return '<div class="bullet"><strong>' + c.name + '</strong><br>' + c.angle + '</div>' + nums + compare + (c.edge ? '<div class="pitch"><strong>How to sell it:</strong> ' + c.edge + '</div>' : '') + (c.source ? '<div style="font-size:.78rem;opacity:.7;margin:.35rem 0 1rem;">Source: ' + c.source + ' • model-level comparison</div>' : '');
-          }).join('') + '<div style="font-size:.78rem;opacity:.7;margin-top:.5rem;">* Maximum ratings are configuration-dependent. CarDex will not treat a model-level max as proof of this VIN's rating.</div>' : '') +
+          (sales.competitors.length ? '<div class="section-title">Competitive edge</div>' + sales.competitors.map(function(c){ return '<div class="bullet"><strong>' + c.name + '</strong><br>' + c.angle + '</div>'; }).join("") : '') +
           '<div class="section-title">Customer pitch</div><div class="pitch">' + sales.pitch + '</div>' +
           '<div class="section-title">Questions to ask</div>' +
           sales.questions.map(function(p){ return '<div class="bullet">' + p + '</div>'; }).join("") +
