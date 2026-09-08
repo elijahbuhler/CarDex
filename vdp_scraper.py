@@ -107,19 +107,23 @@ def scrape_vdp(url: str) -> Dict[str, Any]:
     if not url:
         return out
 
-    try:
-        resp = requests.get(
-            url,
-            headers={
-                "User-Agent": USER_AGENT,
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                "Accept-Language": "en-US,en;q=0.9",
-            },
-            timeout=15,
-        )
-        if resp.status_code != 200:
-            return out
-    except requests.RequestException:
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0 Safari/537.36 CarDex/2.1",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Cache-Control": "no-cache",
+        "Pragma": "no-cache",
+        "Referer": "https://www.lithiachryslermissoula.com/",
+    }
+    resp = None
+    for attempt in range(2):
+        try:
+            resp = requests.get(url, headers=headers, timeout=12)
+            if resp.status_code == 200:
+                break
+        except requests.RequestException:
+            resp = None
+    if resp is None or resp.status_code != 200:
         return out
 
     html = resp.text
@@ -287,6 +291,7 @@ def scrape_vdp(url: str) -> Dict[str, Any]:
         stock_patterns = [
             r'"(?:stockNumber|stock_number|stockNo|stock)"\s*:\s*"([^"]+)"',
             r'(?i)\b(?:stock|stock\s*#|stock\s*number)\s*[:#-]?\s*([A-Z0-9-]{3,})',
+            r'(?is)Stock\s*Number(?:\s|<[^>]+>)*[:#]?\s*(?:<[^>]+>\s*)*([A-Z0-9-]{3,20})\b',
         ]
         for pat in stock_patterns:
             m = re.search(pat, raw if '"' in pat else text)
@@ -300,6 +305,7 @@ def scrape_vdp(url: str) -> Dict[str, Any]:
         mileage_patterns = [
             r'"(?:mileage|odometer|mileageValue)"\s*:\s*(?:"([0-9,]+)"|([0-9,]+))',
             r'(?i)\b(?:mileage|odometer)\s*[:#-]?\s*([0-9,]+)\s*(?:mi|miles)?',
+            r'(?is)(?:Odometer|Mileage)(?:\s|<[^>]+>)*[:#-]?\s*(?:<[^>]+>\s*)*([0-9][0-9,]*)\s*(?:miles?|mi)?',
         ]
         for pat in mileage_patterns:
             m = re.search(pat, raw if '"' in pat else text)
@@ -395,6 +401,24 @@ def scrape_vdp(url: str) -> Dict[str, Any]:
                 if val and len(val) <= 100:
                     out["engine"] = val
                     break
+
+    # Dealer.com sometimes renders the overview/spec labels as HTML nodes rather
+    # than plain text. Strip tags only after running label/value patterns so we
+    # can still capture values such as "Horsepower ... 190hp" and "Transmission ... CVT".
+    if not out.get("engine_hp"):
+        m = re.search(r'(?is)Horsepower(?:\s|<[^>]+>)*[:#-]?\s*(?:<[^>]+>\s*)*([0-9]{2,4})\s*(?:hp|horsepower)', raw)
+        if m:
+            out["engine_hp"] = int(m.group(1))
+    if not out.get("transmission"):
+        m = re.search(r'(?is)Transmission(?:\s|<[^>]+>)*[:#-]?\s*(?:<[^>]+>\s*)*([^<]{2,80}?)(?=<|\n|$)', raw)
+        if m:
+            val = re.sub(r'\s+', ' ', m.group(1)).strip(' :;-')
+            if val and len(val) <= 80:
+                out["transmission"] = val
+    if not out.get("torque"):
+        m = re.search(r'(?is)Torque(?:\s|<[^>]+>)*[:#-]?\s*(?:<[^>]+>\s*)*([0-9]{2,4})\s*(?:lb\.?[- ]?ft|lb\.?\s*ft)', raw)
+        if m:
+            out["torque"] = f"{m.group(1)} lb-ft"
 
     # --- 7) Spec-sheet scan for stock #, mileage, powertrain, torque, towing, flat-tow ---
     for label, value in _label_value_pairs(soup).items():
