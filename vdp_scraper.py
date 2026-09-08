@@ -97,7 +97,7 @@ def _find_lithia_vdp_by_vin(vin: str) -> Optional[str]:
     return None
 
 
-def scrape_vdp(url: str) -> Dict[str, Any]:
+def scrape_vdp(url: str, known_vin: Optional[str] = None) -> Dict[str, Any]:
     """
     Fetch a vehicle detail page and extract whatever public specs are
     present. Returns a dict containing only the fields it actually found:
@@ -115,6 +115,11 @@ def scrape_vdp(url: str) -> Dict[str, Any]:
         "Pragma": "no-cache",
         "Referer": "https://www.lithiachryslermissoula.com/",
     }
+    # If the stored URL is a feed/third-party URL, use the vehicle VIN we already
+    # trust instead of trying to rediscover it from that page. This is critical
+    # for used inventory where the feed page may not contain the VIN in HTML.
+    supplied_vin = str(known_vin or "").strip().upper()
+
     resp = None
     for attempt in range(2):
         try:
@@ -135,7 +140,7 @@ def scrape_vdp(url: str) -> Dict[str, Any]:
     # mileage and condition.
     host = (requests.utils.urlparse(url).hostname or "").lower()
     if "lithiachryslermissoula.com" not in host:
-        vin = _extract_vin(html)
+        vin = supplied_vin or _extract_vin(html)
         lithia_url = _find_lithia_vdp_by_vin(vin) if vin else None
         if lithia_url:
             try:
@@ -151,7 +156,7 @@ def scrape_vdp(url: str) -> Dict[str, Any]:
                 if lr.status_code == 200:
                     # Parse the Lithia VDP recursively, but stop here so we
                     # don't recurse again into the non-Lithia URL.
-                    return scrape_vdp(lithia_url)
+                    return scrape_vdp(lithia_url, known_vin=vin)
             except requests.RequestException:
                 pass
 
@@ -280,6 +285,55 @@ def scrape_vdp(url: str) -> Dict[str, Any]:
                 m = re.search(r"(?i)\bMileage\s*[:#]?\s*([0-9,]+)\s*miles\b", text)
             if m:
                 out["mileage"] = _clean_int(m.group(1))
+
+    # Additional public Dealer.com/Lithia text formats. These are common on
+    # older used VDPs where the labels are rendered as separate text nodes.
+    if not out.get("mileage"):
+        for pat in (
+            r"(?i)\bUsed\s*[•·|/-]\s*([0-9,]+)\s*mi\b",
+            r"(?i)\b([0-9,]+)\s*mi\b",
+            r"(?i)\bOdometer\s+([0-9,]+)\b",
+        ):
+            m = re.search(pat, text)
+            if m:
+                val = _clean_int(m.group(1))
+                if val is not None:
+                    out["mileage"] = val
+                    break
+
+    if not out.get("engine_hp"):
+        for pat in (
+            r"(?i)\b(?:horsepower|horse power|hp)\s*[:#-]?\s*([0-9]{2,4})\s*(?:hp|horsepower)?\b",
+            r"(?i)\bwith\s+(?:a\s+)?(?:[A-Za-z0-9.\-]+\s+){0,5}engine\s+with\s+([0-9]{2,4})\s*HP\b",
+        ):
+            m = re.search(pat, text)
+            if m:
+                hp = _clean_int(m.group(1))
+                if hp:
+                    out["engine_hp"] = hp
+                    break
+
+    if not out.get("transmission"):
+        m = re.search(r"(?i)\b(?:transmission|trans)\s*[:#-]?\s*([^|•·\n]{3,60}?)(?=\s+(?:engine|horsepower|hp|drive train|drivetrain|fuel|body|interior|exterior)\b|$)", text)
+        if m:
+            val = re.sub(r"\s+", " ", m.group(1)).strip(" :-")
+            if val:
+                out["transmission"] = val
+        if not out.get("transmission"):
+            for term in ("Continuously Variable Transmission", "10-Speed Automatic", "8-Speed Automatic", "6-Speed Automatic", "9-Speed Automatic", "7-Speed Automatic", "5-Speed Automatic", "6-Speed Manual"):
+                if re.search(re.escape(term), text, re.I):
+                    out["transmission"] = term
+                    break
+
+    if not out.get("torque"):
+        for pat in (
+            r"(?i)\btorque\s*[:#-]?\s*([0-9]{2,4})\s*(?:lb\.?[- ]?ft|lbft)\b",
+            r"(?i)\b([0-9]{2,4})\s*lb\.?[- ]?ft\b",
+        ):
+            m = re.search(pat, text)
+            if m:
+                out["torque"] = f"{_clean_int(m.group(1))} lb-ft"
+                break
 
     # --- 4) Raw-page fallbacks ---
     # Dealer.com pages often put stock/mileage in inline JSON or JS rather
