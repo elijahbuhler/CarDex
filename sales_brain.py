@@ -37,6 +37,8 @@ def _normalize_model(make: Any, model: Any, trim: Any = "") -> str:
     }
     if m in aliases:
         return aliases[m]
+    if m in {"mazda 6", "mazda6"}:
+        return "mazda6"
     # Prefer known model prefixes, e.g. "grand cherokee l laredo".
     known = sorted([
         "grand cherokee l", "grand cherokee", "grand highlander",
@@ -244,6 +246,60 @@ MODEL_YEAR_DATA: Dict[Tuple[int, str, str], Dict[str, Any]] = {
     },
 }
 
+# Common sedan cross-shop references. These are model-level baselines, not VIN/trim
+# matches. Where a model has multiple powertrains, the profile intentionally uses
+# the mainstream gas configuration so a used listing still gets a useful comparison.
+for _y in (2020, 2021, 2022, 2023, 2024, 2025):
+    MODEL_YEAR_DATA.setdefault((_y, "honda", "accord"), {
+        "engine": "1.5L turbocharged I4 (gas reference)",
+        "hp": 192,
+        "torque": 192,
+        "transmission": "CVT",
+        "drivetrain": "FWD",
+        "body_style": "Midsize sedan",
+        "towing": "Not rated for towing",
+        "flat_tow": "Not designed for recreational flat towing",
+        "feature_summary": "Midsize sedan; powertrain and equipment vary by trim/year; hybrid and higher-output configurations exist in some years.",
+        "source": "Honda Accord model-year manufacturer specifications",
+    })
+    MODEL_YEAR_DATA.setdefault((_y, "toyota", "camry"), {
+        "engine": "2.5L 4-cylinder gas reference" if _y < 2025 else "2.5L 4-cylinder hybrid",
+        "hp": 203 if _y < 2025 else 225,
+        "torque": 184 if _y < 2025 else None,
+        "transmission": "8-speed automatic" if _y < 2025 else "eCVT",
+        "drivetrain": "FWD or available AWD",
+        "body_style": "Midsize sedan",
+        "towing": "Not rated for towing",
+        "flat_tow": "Not designed for recreational flat towing",
+        "feature_summary": "Midsize sedan; drivetrain and powertrain vary by year/trim.",
+        "source": "Toyota Camry model-year manufacturer specifications",
+    })
+    MODEL_YEAR_DATA.setdefault((_y, "nissan", "altima"), {
+        "engine": "2.5L 4-cylinder gas reference",
+        "hp": 188,
+        "torque": 180,
+        "transmission": "Xtronic CVT",
+        "drivetrain": "FWD or available AWD",
+        "body_style": "Midsize sedan",
+        "towing": "Not rated for towing",
+        "flat_tow": "Not designed for recreational flat towing",
+        "feature_summary": "Midsize sedan; available AWD on applicable years/trims; powertrain varies by trim.",
+        "source": "Nissan Altima model-year manufacturer specifications",
+    })
+    MODEL_YEAR_DATA.setdefault((_y, "mazda", "mazda6"), {
+        "engine": "2.5L 4-cylinder gas reference",
+        "hp": 187,
+        "torque": 186,
+        "transmission": "6-speed automatic",
+        "drivetrain": "FWD",
+        "body_style": "Midsize sedan",
+        "towing": "Not rated for towing",
+        "flat_tow": "Not designed for recreational flat towing",
+        "feature_summary": "Midsize sedan; available turbocharged powertrain on some trims/years.",
+        "source": "Mazda6 model-year manufacturer specifications",
+    })
+
+
 COMPETITORS = {
     "jeep grand cherokee": ["Ford Explorer", "Toyota Highlander", "Honda Pilot", "Toyota 4Runner", "Chevrolet Traverse"],
     "jeep grand cherokee l": ["Ford Explorer", "Toyota Grand Highlander", "Honda Pilot", "Chevrolet Traverse"],
@@ -258,6 +314,9 @@ COMPETITORS = {
     "honda pilot": ["Jeep Grand Cherokee", "Ford Explorer", "Toyota Highlander", "Chevrolet Traverse"],
     "toyota 4runner": ["Jeep Grand Cherokee", "Ford Bronco"],
     "chevrolet traverse": ["Jeep Grand Cherokee", "Ford Explorer", "Toyota Highlander", "Honda Pilot"],
+    "honda accord": ["Toyota Camry", "Nissan Altima", "Mazda 6"],
+    "toyota camry": ["Honda Accord", "Nissan Altima", "Mazda 6"],
+    "nissan altima": ["Honda Accord", "Toyota Camry", "Mazda 6"],
 }
 
 
@@ -277,9 +336,11 @@ def _model_profile(year: Optional[int], make: str, model: str) -> Dict[str, Any]
         (k, v) for k, v in MODEL_YEAR_DATA.items()
         if k[0] == year and k[1] == make
     ]
-    candidates.sort(key=lambda item: len(item[0][2]), reverse=True)
+    candidates.sort(key=lambda item: (abs(item[0][0] - year), -len(item[0][2])))
     for (yy, mmake, mmodel), profile in candidates:
-        if model.startswith(mmodel + " ") or mmodel.startswith(model + " "):
+        if model == mmodel or model.startswith(mmodel + " ") or mmodel.startswith(model + " "):
+            # A same-model nearby-year profile is still useful model-level
+            # reference data when the exact year is not in the table.
             return profile
     return {}
 
@@ -386,7 +447,9 @@ def _profile_for_name(year: Optional[int], name: str) -> Dict[str, Any]:
         return {}
     make = parts[0]
     model = " ".join(parts[1:])
-    # Map brand spellings.
+    # Multi-token/brand-model aliases used by the comparison list.
+    if make == "mazda" and model in {"6", "mazda6"}:
+        model = "mazda6"
     return _model_profile(year, make, model) or _general_profile(year, make, model)
 
 
