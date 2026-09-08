@@ -516,7 +516,17 @@ def _profile_for_name(year: Optional[int], name: str) -> Dict[str, Any]:
     # Multi-token/brand-model aliases used by the comparison list.
     if make == "mazda" and model in {"6", "mazda6"}:
         model = "mazda6"
-    return _model_profile(year, make, model) or _general_profile(year, make, model)
+    profile = _model_profile(year, make, model)
+    if profile:
+        return profile
+    # If the actual listing year is missing or outside our reference table,
+    # use the newest published profile for this same model rather than making
+    # the salesperson stare at a blank comparison.
+    profiles = [(k[0], v) for k, v in MODEL_YEAR_DATA.items() if k[1] == make and k[2] == model]
+    if profiles:
+        profiles.sort(key=lambda item: item[0], reverse=True)
+        return profiles[0][1]
+    return _general_profile(year, make, model)
 
 
 
