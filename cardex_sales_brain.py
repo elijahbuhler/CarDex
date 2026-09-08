@@ -99,37 +99,61 @@ def _competitive_numbers(year: Any, make: str, model: str, rival: str) -> Dict[s
 
 
 def _comparison(vehicle_data: Dict[str, Any], rival_data: Dict[str, Any] | None, rival: str) -> Dict[str, Any]:
+    """Build a safe model-level competitor comparison. Never let bad/missing data crash a report."""
     if not rival_data or not vehicle_data:
-        return {"name": rival, "data_available": False, "angle": "Ask what the customer likes about this competitor and compare those priorities side by side."}
-    hp = vehicle_data.get("hp"); rhp = rival_data.get("hp")
-    tq = vehicle_data.get("torque"); rtq = rival_data.get("torque")
+        return {
+            "name": rival,
+            "data_available": False,
+            "angle": "Ask what the customer likes about this competitor, then compare those priorities against this vehicle's verified equipment.",
+            "comparison": [
+                f"Competitor reference: {rival}.",
+                "Exact competitor trim/equipment is not being represented as a VIN-to-VIN match.",
+                "Use the customer's stated priority (price, power, space, fuel economy, towing, technology or capability) for the side-by-side comparison.",
+            ],
+        }
+
+    def num(value):
+        try:
+            return float(value) if value is not None and str(value).strip() != "" else None
+        except (TypeError, ValueError):
+            return None
+
+    hp = num(vehicle_data.get("hp")); rhp = num(rival_data.get("hp"))
+    tq = num(vehicle_data.get("torque")); rtq = num(rival_data.get("torque"))
+    tow = num(vehicle_data.get("max_towing")); rtow = num(rival_data.get("max_towing"))
     lines = []
+
+    def fmt_num(v):
+        if v is None: return "VERIFY"
+        return f"{int(v) if float(v).is_integer() else v:g}"
+
     if hp is not None and rhp is not None:
         delta = hp - rhp
-        lines.append(f"Power: {hp} hp vs {rhp} hp ({'+' if delta >= 0 else ''}{delta} hp for the Jeep).")
+        lines.append(f"Power: {fmt_num(hp)} hp vs {fmt_num(rhp)} hp ({'+' if delta >= 0 else ''}{fmt_num(delta)} hp for this Jeep reference).")
     if tq is not None and rtq is not None:
         delta = tq - rtq
-        lines.append(f"Torque: {tq} lb-ft vs {rtq} lb-ft ({'+' if delta >= 0 else ''}{delta} lb-ft for the Jeep).")
-    if vehicle_data.get("max_towing") and rival_data.get("max_towing"):
-        lines.append(f"Max towing: up to {vehicle_data['max_towing']:,} lbs vs up to {rival_data['max_towing']:,} lbs — verify exact configuration before quoting.")
-    # Sales truth: say where the Jeep wins AND where it doesn't.
+        lines.append(f"Torque: {fmt_num(tq)} lb-ft vs {fmt_num(rtq)} lb-ft ({'+' if delta >= 0 else ''}{fmt_num(delta)} lb-ft for this Jeep reference).")
+    if tow is not None and rtow is not None:
+        lines.append(f"Max towing: up to {int(tow):,} lbs vs up to {int(rtow):,} lbs — verify exact configuration before quoting.")
+
     wins = []
-    if hp > rhp: wins.append("horsepower")
-    if tq > rtq: wins.append("torque")
-    if vehicle_data.get("max_towing", 0) > rival_data.get("max_towing", 0): wins.append("maximum listed towing")
+    if hp is not None and rhp is not None and hp > rhp: wins.append("horsepower")
+    if tq is not None and rtq is not None and tq > rtq: wins.append("torque")
+    if tow is not None and rtow is not None and tow > rtow: wins.append("maximum listed towing")
     if wins:
         edge = "Jeep edge: " + ", ".join(wins) + "."
     else:
-        edge = "Do not sell this as a raw power advantage; sell the Jeep's overall fit, capability character and equipment on the actual vehicle."
+        edge = "Do not sell this as a raw power advantage; sell the Jeep's overall fit, capability character and the verified equipment on this actual vehicle."
+
     return {
         "name": rival,
         "data_available": True,
         "engine": rival_data.get("engine"),
-        "hp": rhp,
-        "torque": rtq,
-        "max_towing": rival_data.get("max_towing"),
+        "hp": int(rhp) if rhp is not None and rhp.is_integer() else rhp,
+        "torque": int(rtq) if rtq is not None and rtq.is_integer() else rtq,
+        "max_towing": int(rtow) if rtow is not None and rtow.is_integer() else rtow,
         "source": rival_data.get("source"),
-        "comparison": lines,
+        "comparison": lines or [f"Compare the verified {rival} equipment against this vehicle based on the customer's priorities."],
         "edge": edge,
         "angle": _competitive_angle("jeep", "grand cherokee", rival),
     }
