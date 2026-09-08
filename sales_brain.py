@@ -12,10 +12,41 @@ Design:
 
 from __future__ import annotations
 from typing import Any, Dict, List, Optional, Tuple
+import re
 
 
 def _clean(v: Any) -> str:
-    return str(v or "").strip().lower()
+    return re.sub(r"\s+", " ", str(v or "").strip().lower())
+
+
+def _normalize_model(make: Any, model: Any, trim: Any = "") -> str:
+    """Normalize inventory naming without treating trim/package text as model data."""
+    m = _clean(model)
+    make_n = _clean(make)
+    # Common feed variants. Keep model-level identity, strip only obvious trim
+    # suffixes; never use trim/package features as factual assumptions.
+    aliases = {
+        "grand cherokee l": "grand cherokee l",
+        "grand cherokee long wheelbase": "grand cherokee l",
+        "grand cherokee": "grand cherokee",
+        "grand highlander": "grand highlander",
+        "4runner": "4runner",
+        "explorer": "explorer",
+        "pilot": "pilot",
+        "traverse": "traverse",
+    }
+    if m in aliases:
+        return aliases[m]
+    # Prefer known model prefixes, e.g. "grand cherokee l laredo".
+    known = sorted([
+        "grand cherokee l", "grand cherokee", "grand highlander",
+        "4runner", "explorer", "pilot", "traverse", "wrangler",
+        "compass", "gladiator", "1500", "2500", "3500",
+    ], key=len, reverse=True)
+    for base in known:
+        if m.startswith(base + " "):
+            return base
+    return m
 
 
 def _year(v: Any) -> Optional[int]:
@@ -26,7 +57,7 @@ def _year(v: Any) -> Optional[int]:
 
 
 def _key(vehicle: Dict[str, Any]) -> Tuple[Optional[int], str, str]:
-    return (_year(vehicle.get("year")), _clean(vehicle.get("make")), _clean(vehicle.get("model")))
+    return (_year(vehicle.get("year")), _clean(vehicle.get("make")), _normalize_model(vehicle.get("make"), vehicle.get("model"), vehicle.get("trim")))
 
 
 # Model-year reference facts. These are deliberately model-level.
@@ -311,7 +342,7 @@ def resolve_fallbacks(vehicle: Dict[str, Any], nhtsa: Optional[Dict[str, Any]]) 
 
 
 def competitor_list(vehicle: Dict[str, Any]) -> List[str]:
-    key = f"{_clean(vehicle.get('make'))} {_clean(vehicle.get('model'))}".strip()
+    key = f"{_clean(vehicle.get('make'))} {_normalize_model(vehicle.get('make'), vehicle.get('model'), vehicle.get('trim'))}".strip()
     if key in COMPETITORS:
         return COMPETITORS[key]
     return []
@@ -326,6 +357,22 @@ def _profile_for_name(year: Optional[int], name: str) -> Dict[str, Any]:
     # Map brand spellings.
     return _model_profile(year, make, model) or _general_profile(year, make, model)
 
+
+
+def _tow_num(v: Any) -> Optional[int]:
+    """Extract a published towing number; reject N/A/NaN rather than surfacing it."""
+    text = str(v or "")
+    if not text or re.search(r"\b(?:n/?a|nan|unknown|null)\b", text, re.I):
+        return None
+    m = re.search(r"([0-9][0-9,]*)\s*(?:lbs?|pounds?)", text, re.I)
+    return int(m.group(1).replace(",", "")) if m else None
+
+
+def _tow_text(v: Any) -> Optional[str]:
+    n = _tow_num(v)
+    if n is None:
+        return None
+    return str(v).strip()
 
 def _number(v: Any) -> Optional[float]:
     try:
@@ -364,12 +411,14 @@ def _comparison(vehicle: Dict[str, Any], rival: str) -> Dict[str, Any]:
         lines.append(f"Drivetrain: {base['drivetrain']} vs {rival_data['drivetrain']}.")
     if base.get("body_style") and rival_data.get("body_style"):
         lines.append(f"Vehicle format: {base['body_style']} vs {rival_data['body_style']}.")
-    if base.get("towing") and rival_data.get("towing"):
-        lines.append(f"Towing reference: {base['towing']} vs {rival_data['towing']}.")
-    elif rival_data.get("towing"):
+    base_tow_text = _tow_text(base.get("towing"))
+    rival_tow_text = _tow_text(rival_data.get("towing"))
+    if base_tow_text and rival_tow_text:
+        lines.append(f"Towing reference: {base_tow_text} vs {rival_tow_text}.")
+    elif rival_tow_text:
         # Never show a blank/N/A towing field when a verified model-year
         # towing reference exists.
-        lines.append(f"Towing reference: {rival_data['towing']}.")
+        lines.append(f"Towing reference: {rival_tow_text}.")
 
     if rival_data.get("feature_summary"):
         lines.append(f"{rival} model-year focus: {rival_data['feature_summary']}")
@@ -394,11 +443,7 @@ def _comparison(vehicle: Dict[str, Any], rival: str) -> Dict[str, Any]:
     # This is model-year comparison logic, not competitor-VIN matching.
     edge_parts: List[str] = []
     rival_lower = rival.lower()
-    if base.get("towing") and rival_data.get("towing"):
-        import re
-        def _tow_num(x: Any) -> Optional[int]:
-            m = re.search(r"([0-9,]+)\s*lbs", str(x or ""))
-            return int(m.group(1).replace(",", "")) if m else None
+    if base_tow_text and rival_tow_text:
         a_tow, r_tow = _tow_num(base.get("towing")), _tow_num(rival_data.get("towing"))
         if a_tow and r_tow and a_tow > r_tow:
             edge_parts.append(f"Towing: {a_tow:,} lbs max reference vs {r_tow:,} lbs for the {rival}.")
@@ -437,8 +482,11 @@ def _comparison(vehicle: Dict[str, Any], rival: str) -> Dict[str, Any]:
         "torque": int(rival_tq) if rival_tq is not None else None,
         "transmission": rival_data.get("transmission"),
         "drivetrain": rival_data.get("drivetrain"),
-        "max_towing": rival_data.get("towing"),
-        "towing_lbs": _tow_num(rival_data.get("towing")) if rival_data.get("towing") else None,
+        # Keep max_towing numeric because the current CarDex UI formats it
+        # with Number(...). This prevents the old NaN/"N/A" display bug.
+        "max_towing": _tow_num(rival_data.get("towing")),
+        "towing_lbs": _tow_num(rival_data.get("towing")),
+        "towing_label": _tow_text(rival_data.get("towing")),
         "feature_summary": rival_data.get("feature_summary"),
         "comparison": lines or [f"{rival} is shown here as a {year or 'model-year'} model-level reference; exact trim/package equipment is not being assumed."],
         "angle": angle,
