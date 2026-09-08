@@ -381,8 +381,12 @@ def _comparison(vehicle: Dict[str, Any], rival: str) -> Dict[str, Any]:
         a_tow, r_tow = _tow_num(base.get("towing")), _tow_num(rival_data.get("towing"))
         if a_tow and r_tow and a_tow > r_tow:
             edge_parts.append(f"Towing: {a_tow:,} lbs max reference vs {r_tow:,} lbs for the {rival}.")
-    if "grand cherokee l" in f"{make} {model}" and rival_lower in {"ford explorer", "toyota grand highlander"}:
-        edge_parts.append("Three-row practicality: the Grand Cherokee L gives the customer three rows while keeping Jeep's available 4x4/capability story in the conversation.")
+    if "grand cherokee l" in f"{make} {model}" and rival_lower == "ford explorer":
+        edge_parts.append("Towing/capability: the 2025 Grand Cherokee L has a 6,200-lb maximum model-year reference versus 5,000 lbs for the Explorer when properly equipped.")
+        edge_parts.append("Power trade-off: Explorer's 300 hp/310 lb-ft reference is higher than the Grand Cherokee L's 293 hp/260 lb-ft, so sell the Jeep on towing, available 4x4 and the actual equipment rather than claiming a power advantage.")
+    elif "grand cherokee l" in f"{make} {model}" and rival_lower == "toyota grand highlander":
+        edge_parts.append("Towing/power: the 2025 Grand Cherokee L's 6,200-lb towing reference and 293 hp exceed the Grand Highlander's 5,000-lb towing reference and 265 hp gas-model reference.")
+        edge_parts.append("The Grand Highlander has more cargo/passenger-oriented space and available hybrid powertrains, so use the Jeep advantage when towing, 4x4 capability or V6 power is what the customer values.")
     if "grand cherokee" in f"{make} {model}" and "4runner" in rival_lower:
         edge_parts.append("The Grand Cherokee can be positioned as the more road-oriented SUV while still offering available 4x4 capability; don't claim off-road hardware that this VIN doesn't have.")
     if "grand cherokee" in f"{make} {model}" and rival_lower in {"toyota highlander", "honda pilot", "chevrolet traverse"}:
