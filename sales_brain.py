@@ -399,6 +399,13 @@ def _general_profile(year: Optional[int], make: str, model: str) -> Dict[str, An
     return families.get(f"{make} {model}", {})
 
 
+def _usable(value: Any) -> bool:
+    if value is None:
+        return False
+    text = str(value).strip().lower()
+    return text not in {"", "verify", "n/a", "na", "unknown", "null", "none", "nan"}
+
+
 def resolve_fallbacks(vehicle: Dict[str, Any], nhtsa: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     nhtsa = nhtsa or {}
     year, make, model = _key(vehicle)
@@ -406,12 +413,12 @@ def resolve_fallbacks(vehicle: Dict[str, Any], nhtsa: Optional[Dict[str, Any]]) 
     result: Dict[str, Any] = {}
 
     for field in ("engine", "transmission", "drivetrain", "body_style", "flat_tow", "towing_capacity"):
-        if not vehicle.get(field) and profile.get(field):
+        if not _usable(vehicle.get(field)) and profile.get(field):
             result[field] = profile[field]
 
-    if not nhtsa.get("engine_hp") and not vehicle.get("engine_hp") and profile.get("hp"):
+    if not _usable(vehicle.get("engine_hp")) and profile.get("hp"):
         result["engine_hp"] = profile["hp"]
-    if not vehicle.get("torque") and profile.get("torque"):
+    if not _usable(vehicle.get("torque")) and profile.get("torque"):
         result["torque"] = f"{profile['torque']} lb-ft"
 
     if profile:
@@ -625,31 +632,42 @@ def build_sales_brain(vehicle: Dict[str, Any], nhtsa: Optional[Dict[str, Any]] =
         "towing_capacity": profile.get("towing"),
         "flat_tow": profile.get("flat_tow"),
     }.items():
-        if value and not vehicle.get(field):
+        if value and not _usable(vehicle.get(field)):
             vehicle[field] = value
 
-    if profile.get("hp") and not vehicle.get("engine_hp") and not nhtsa.get("engine_hp"):
+    if profile.get("hp") and not _usable(vehicle.get("engine_hp")):
         vehicle["engine_hp"] = profile["hp"]
+
+    # 2022 Civic (and the Civic family generally) cannot be a 400-hp pickup.
+    # If an external feed supplied an obviously incompatible value, prefer the
+    # manufacturer model-year reference unless the VDP supplied a known Civic
+    # output. This blocks bad NHTSA/feed values from leaking into the report.
+    if make == "honda" and model == "civic" and profile.get("hp"):
+        try:
+            hp_num = float(vehicle.get("engine_hp")) if _usable(vehicle.get("engine_hp")) else None
+        except (TypeError, ValueError):
+            hp_num = None
+        if hp_num is None or hp_num > 250:
+            vehicle["engine_hp"] = profile["hp"]
     if profile.get("torque") and not vehicle.get("torque"):
         vehicle["torque"] = f"{profile['torque']} lb-ft"
 
-    engine = vehicle.get("engine") or profile.get("engine") or nhtsa.get("engine")
-    hp = vehicle.get("engine_hp") or profile.get("hp") or nhtsa.get("engine_hp")
-    torque = vehicle.get("torque") or (f"{profile['torque']} lb-ft" if profile.get("torque") else None)
-    transmission = vehicle.get("transmission") or profile.get("transmission") or nhtsa.get("transmission")
-    drivetrain = vehicle.get("drivetrain") or profile.get("drivetrain") or nhtsa.get("drivetrain")
-    body = vehicle.get("body_style") or profile.get("body_style") or nhtsa.get("body_style")
-    towing = vehicle.get("towing_capacity") or profile.get("towing")
-    flat_tow = vehicle.get("flat_tow") or profile.get("flat_tow")
+    engine = vehicle.get("engine") if _usable(vehicle.get("engine")) else (profile.get("engine") or nhtsa.get("engine"))
+    hp = vehicle.get("engine_hp") if _usable(vehicle.get("engine_hp")) else (profile.get("hp") or nhtsa.get("engine_hp"))
+    torque = vehicle.get("torque") if _usable(vehicle.get("torque")) else (f"{profile['torque']} lb-ft" if profile.get("torque") else None)
+    transmission = vehicle.get("transmission") if _usable(vehicle.get("transmission")) else (profile.get("transmission") or nhtsa.get("transmission"))
+    drivetrain = vehicle.get("drivetrain") if _usable(vehicle.get("drivetrain")) else (profile.get("drivetrain") or nhtsa.get("drivetrain"))
+    body = vehicle.get("body_style") if _usable(vehicle.get("body_style")) else (profile.get("body_style") or nhtsa.get("body_style"))
+    towing = vehicle.get("towing_capacity") if _usable(vehicle.get("towing_capacity")) else profile.get("towing")
+    flat_tow = vehicle.get("flat_tow") if _usable(vehicle.get("flat_tow")) else profile.get("flat_tow")
 
     # Never let an obviously bad feed/NHTSA body classification override a
     # known model-year profile (e.g. a Civic being reported as a pickup).
     if profile.get("body_style"):
         body = profile["body_style"]
         vehicle["body_style"] = profile["body_style"]
-    if profile.get("hp") and not vehicle.get("engine_hp"):
+    if profile.get("hp") and (not _usable(vehicle.get("engine_hp")) or (make == "honda" and model == "civic" and float(vehicle.get("engine_hp")) > 250)):
         vehicle["engine_hp"] = profile["hp"]
-
 
     title = " ".join(str(x) for x in [vehicle.get("year"), vehicle.get("make"), vehicle.get("model"), vehicle.get("trim")] if x)
 
