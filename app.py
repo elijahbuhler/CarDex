@@ -10,9 +10,9 @@ from flask import Flask, jsonify, render_template_string, request
 
 from scraper import InventoryEngine, list_adapters
 from store import InventoryStore
-from sales_brain import build_sales_brain
+from cardex_sales_brain import build_sales_brain
 
-__version__ = "2.3.2-sales-brain-fixed"
+__version__ = "2.3.3-sales-brain-import-fixed"
 
 app = Flask(__name__)
 app.config["JSON_SORT_KEYS"] = False
