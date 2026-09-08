@@ -26,6 +26,77 @@ USER_AGENT = (
 )
 
 
+
+LITHIA_BASE = "https://www.lithiachryslermissoula.com"
+
+
+def _extract_vin(html: str) -> Optional[str]:
+    """Extract an explicit 17-character VIN from a public vehicle page."""
+    patterns = [
+        r'(?i)\bVIN\s*[:#]?\s*</?[^>]*>\s*([A-HJ-NPR-Z0-9]{17})\b',
+        r'(?i)\bVIN\s*[:#]?\s*([A-HJ-NPR-Z0-9]{17})\b',
+        r'(?i)"vin"\s*:\s*"([A-HJ-NPR-Z0-9]{17})"',
+        r'(?i)"VIN"\s*:\s*"([A-HJ-NPR-Z0-9]{17})"',
+    ]
+    for pat in patterns:
+        m = re.search(pat, html)
+        if m:
+            return m.group(1).upper()
+    # Last-resort VIN-shaped token. Keep this conservative.
+    for token in re.findall(r'\b[A-HJ-NPR-Z0-9]{17}\b', html.upper()):
+        if token[0] not in "0123456789":
+            return token
+    return None
+
+
+def _find_lithia_vdp_by_vin(vin: str) -> Optional[str]:
+    """
+    Ask Lithia's own public inventory/search pages for the exact VIN and
+    return the matching Lithia VDP URL if the public site exposes one.
+
+    We deliberately try only public GET URLs; no dealer credentials/API.
+    """
+    if not vin:
+        return None
+
+    candidates = [
+        f"{LITHIA_BASE}/all-inventory/index.htm?search={vin}",
+        f"{LITHIA_BASE}/all-inventory/index.htm?searchText={vin}",
+        f"{LITHIA_BASE}/all-inventory/index.htm?vin={vin}",
+        f"{LITHIA_BASE}/searchall.aspx?search={vin}",
+    ]
+    session = requests.Session()
+    headers = {
+        "User-Agent": USER_AGENT,
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+    }
+    for u in candidates:
+        try:
+            r = session.get(u, headers=headers, timeout=12)
+        except requests.RequestException:
+            continue
+        if r.status_code != 200 or vin.upper() not in r.text.upper():
+            continue
+
+        soup = BeautifulSoup(r.text, "lxml")
+        # Prefer VDP anchors that contain /new/ or /used/ and the VIN nearby.
+        for a in soup.find_all("a", href=True):
+            href = str(a["href"]).strip()
+            if not href.lower().endswith((".htm", ".html")):
+                continue
+            if "/new/" not in href.lower() and "/used/" not in href.lower() and "/certified/" not in href.lower():
+                continue
+            full = requests.compat.urljoin(LITHIA_BASE, href)
+            try:
+                page = session.get(full, headers=headers, timeout=12)
+            except requests.RequestException:
+                continue
+            if page.status_code == 200 and vin.upper() in page.text.upper():
+                return full
+    return None
+
+
 def scrape_vdp(url: str) -> Dict[str, Any]:
     """
     Fetch a vehicle detail page and extract whatever public specs are
@@ -54,10 +125,35 @@ def scrape_vdp(url: str) -> Dict[str, Any]:
     html = resp.text
     soup = BeautifulSoup(html, "lxml")
 
+    # If CarDex's stored listing URL is a third-party/public feed URL,
+    # resolve the VIN against Lithia's own public inventory and then read the
+    # exact Lithia VDP. This makes Lithia the source of truth for stock,
+    # mileage and condition.
+    host = (requests.utils.urlparse(url).hostname or "").lower()
+    if "lithiachryslermissoula.com" not in host:
+        vin = _extract_vin(html)
+        lithia_url = _find_lithia_vdp_by_vin(vin) if vin else None
+        if lithia_url:
+            try:
+                lr = requests.get(
+                    lithia_url,
+                    headers={
+                        "User-Agent": USER_AGENT,
+                        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                        "Accept-Language": "en-US,en;q=0.9",
+                    },
+                    timeout=15,
+                )
+                if lr.status_code == 200:
+                    # Parse the Lithia VDP recursively, but stop here so we
+                    # don't recurse again into the non-Lithia URL.
+                    return scrape_vdp(lithia_url)
+            except requests.RequestException:
+                pass
+
     # Lithia's own VDP identifies the vehicle condition directly in the
     # page/title/URL (New or Used). Prefer that dealership-page signal over
     # any third-party feed. Never infer condition from mileage or model year.
-    host = (requests.utils.urlparse(url).hostname or "").lower()
     path = (requests.utils.urlparse(url).path or "").lower()
     if "lithiachryslermissoula.com" in host:
         if "/new/" in path or re.search(r"\bnew\s+\d{4}\b", soup.get_text(" ", strip=True), re.I):
@@ -107,6 +203,9 @@ def scrape_vdp(url: str) -> Dict[str, Any]:
         if og and og.get("content"):
             out["image_url"] = og["content"].strip()
 
+    # Build visible text before any dealership-specific extraction.
+    text = soup.get_text(" ", strip=True)
+
     # --- 3) Lithia direct-page extraction ---
     # Lithia VDPs expose these exact vehicle fields in the public page's
     # "overview" section. Prefer those values before broader Dealer.com
@@ -127,7 +226,6 @@ def scrape_vdp(url: str) -> Dict[str, Any]:
     # Dealer.com pages often put stock/mileage in inline JSON or JS rather
     # than a normal label/value element. Search the public HTML without
     # inventing a value.
-    text = soup.get_text(" ", strip=True)
     raw = html
 
     if not out.get("stock_number"):
