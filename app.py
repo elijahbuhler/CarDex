@@ -6,13 +6,14 @@ Replace app.py with this file on GitHub.
 from __future__ import annotations
 
 import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from flask import Flask, jsonify, render_template_string, request
 
 from scraper import InventoryEngine, list_adapters
 from store import InventoryStore
 from sales_brain import build_sales_brain
 
-__version__ = "2.3.5-sales-brain-report-fixed"
+__version__ = "2.4.0-vdp-fix-ui"
 
 app = Flask(__name__)
 app.config["JSON_SORT_KEYS"] = False
@@ -82,6 +83,28 @@ INDEX_HTML = r"""
     .bullet.warn { border-left-color: var(--amber); }
     .pitch { background: #0d1218; border: 1px solid var(--border); border-radius: 12px; padding: 1rem 1.1rem; font-size: 1rem; line-height: 1.55; }
     a.link { color: var(--accent); font-size: 0.9rem; }
+
+    body::before { content:""; position:fixed; inset:-30%; background: radial-gradient(circle at 15% 10%, rgba(59,130,246,.14), transparent 28%), radial-gradient(circle at 85% 20%, rgba(34,197,94,.10), transparent 25%); pointer-events:none; z-index:-1; animation: drift 14s ease-in-out infinite alternate; }
+    @keyframes drift { from { transform: translate3d(-1%,0,0) scale(1); } to { transform: translate3d(1%,2%,0) scale(1.04); } }
+    .card { box-shadow: 0 12px 40px rgba(0,0,0,.18); transition: transform .22s ease, border-color .22s ease, box-shadow .22s ease; animation: rise .42s ease both; }
+    .card:hover { transform: translateY(-2px); border-color:#2c3b4d; box-shadow: 0 18px 50px rgba(0,0,0,.25); }
+    @keyframes rise { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:none; } }
+    header { background:linear-gradient(180deg, rgba(20,26,34,.94), rgba(20,26,34,.72)); backdrop-filter:blur(12px); position:sticky; top:0; z-index:10; }
+    header h1 { letter-spacing:-.02em; }
+    .badge { box-shadow:0 0 20px rgba(59,130,246,.25); }
+    button { transition: transform .18s ease, filter .18s ease, box-shadow .18s ease; }
+    button:hover { transform:translateY(-1px); box-shadow:0 8px 24px rgba(59,130,246,.18); }
+    .vehicle { transition: transform .2s ease, border-color .2s ease, background .2s ease; animation: itemIn .35s ease both; }
+    .vehicle:hover { transform:translateX(4px); background:#101720; }
+    @keyframes itemIn { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:none; } }
+    .report-photo img { transition:transform .45s ease, filter .35s ease; }
+    .report-photo:hover img { transform:scale(1.045); filter:saturate(1.08); }
+    .spec { transition:transform .18s ease, border-color .18s ease; }
+    .spec:hover { transform:translateY(-2px); border-color:#2c3b4d; }
+    .bullet { transition:transform .18s ease, border-color .18s ease; }
+    .bullet:hover { transform:translateX(3px); }
+    .loading-shimmer { background:linear-gradient(90deg,#111821 25%,#1a2430 37%,#111821 63%); background-size:400% 100%; animation:shimmer 1.4s ease infinite; border-radius:10px; height:58px; margin-bottom:.7rem; }
+    @keyframes shimmer { 0%{background-position:100% 0} 100%{background-position:-100% 0} }
   </style>
 </head>
 <body>
@@ -138,9 +161,9 @@ INDEX_HTML = r"""
         resultsEl.innerHTML = '<div class="empty">No vehicles found yet.</div>';
         return;
       }
-      resultsEl.innerHTML = vehicles.map(v => {
+      resultsEl.innerHTML = vehicles.map((v, i) => {
         const miles = v.mileage != null ? Number(v.mileage).toLocaleString() + " mi" : "—";
-        return '<div class="vehicle" onclick="openReport(' + v.id + ')">' +
+        return '<div class="vehicle" style="animation-delay:' + Math.min(i,12)*35 + 'ms" onclick="openReport(' + v.id + ')">' +
           '<div class="title">' + titleOf(v) + '</div>' +
           '<div class="meta"><span>VIN: ' + (v.vin||"—") + '</span><span>Stock: ' + (v.stock_number||"—") +
           '</span><span>' + miles + '</span><span>' + (v.condition||"—") + '</span></div>' +
@@ -189,7 +212,7 @@ INDEX_HTML = r"""
       document.getElementById("btn-scan").disabled = false;
     }
     async function doBackfill() {
-      setStatus("Backfilling public stock numbers, mileage and vehicle info…");
+      setStatus("Fast enrichment: pulling public Lithia stock, mileage, photos and specs…");
       document.getElementById("btn-backfill").disabled = true;
       let totalUpdated = 0;
       try {
@@ -197,7 +220,7 @@ INDEX_HTML = r"""
           const r = await fetch("/api/backfill_nhtsa", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ limit: 8 })
+            body: JSON.stringify({ limit: 24 })
           });
           const data = await r.json();
           if (!data.ok) { setStatus("Backfill problem: " + (data.error || "unknown"), "err"); break; }
@@ -301,7 +324,7 @@ INDEX_HTML = r"""
           (sales.points.length ? sales.points.map(function(p){ return '<div class="bullet">' + p + '</div>'; }).join("") : '<div class="bullet warn">No selling points were returned for this vehicle. The Sales Brain needs to be connected to the current sales_brain.py.</div>') +
           (sales.fallback && sales.fallback.source ? '<div class="section-title">Smart fallback</div><div class="pitch">Some vehicle-specific data was unavailable, so CarDex filled only stable same-year/model facts. Configuration-dependent items are described as model-level references when exact listing data is unavailable.</div>' : '') +
           (sales.competitors.length ? '<div class="section-title">Competitive intelligence</div>' + sales.competitors.map(function(c){
-            var details = '<div class="bullet"><strong>' + c.name + '</strong>: ' + (c.hp != null ? c.hp + ' hp' : 'Horsepower: model-level reference not published in CarDex yet') + (c.torque != null ? ' / ' + c.torque + ' lb-ft' : '') + (c.engine ? ' • ' + c.engine : '') + (c.max_towing != null ? ' • up to ' + Number(c.max_towing).toLocaleString() + ' lbs towing' : (c.towing_label ? ' • ' + c.towing_label : '')) + '</div>';
+            var details = '<div class="bullet"><strong>' + c.name + '</strong>: ' + (c.hp != null ? c.hp + ' hp' : 'Horsepower: manufacturer model reference') + (c.torque != null ? ' / ' + c.torque + ' lb-ft' : '') + (c.engine ? ' • ' + c.engine : '') + (c.max_towing != null ? ' • up to ' + Number(c.max_towing).toLocaleString() + ' lbs towing' : (c.towing_label ? ' • ' + c.towing_label : '')) + '</div>';
             var compare = (c.comparison || []).map(function(x){ return '<div class="bullet">' + x + '</div>'; }).join('');
             return details + '<div class="bullet">' + (c.angle || '') + '</div>' + compare + (c.edge ? '<div class="pitch"><strong>How to sell it:</strong> ' + c.edge + '</div>' : '');
           }).join('') + '<div style="font-size:.78rem;opacity:.7;margin-top:.5rem;">Competitor numbers are model-level references, not VIN-to-VIN matches. Maximum towing varies by configuration.</div>' : '') +
@@ -371,33 +394,17 @@ def api_discover():
 
 @app.post("/api/backfill_nhtsa")
 def api_backfill_nhtsa():
-    """
-    Backfill active VIN vehicles that are missing public stock/mileage (or have
-    a bad USED VIN-suffix stock), while also filling any missing VIN-decoded
-    fields. Processes a small batch per call so the front-end can loop safely.
-    """
-    import time as _time
+    """Fast public-data enrichment. VDP lookups run concurrently in a small pool."""
     data = request.get_json(silent=True) or {}
-    limit = data.get("limit") or request.args.get("limit", 8, type=int) or 8
-    limit = max(1, min(int(limit), 20))
-
+    limit = data.get("limit") or request.args.get("limit", 24, type=int) or 24
+    limit = max(1, min(int(limit), 32))
     candidates = store.vehicles_needing_enrichment(limit=limit)
-    updated = 0
-    for row in candidates:
+
+    def enrich(row):
         vin = row.get("vin")
         if not vin:
-            continue
-        try:
-            from vin_decode import decode_vin
-            nhtsa = decode_vin(vin)
-        except Exception:
-            nhtsa = None
+            return False
         changed = False
-        if nhtsa:
-            store.fill_nhtsa_fields(row["id"], nhtsa)
-            changed = True
-        # Also backfill the public dealership VDP so stock number/mileage
-        # appear in the backlog workflow, not only after opening a report.
         try:
             from vdp_scraper import scrape_vdp
             current = store.get_vehicle(row["id"]) or {}
@@ -405,18 +412,36 @@ def api_backfill_nhtsa():
             vdp_data = scrape_vdp(listing_url, known_vin=vin) if listing_url else {}
             if vdp_data:
                 is_new = str(vdp_data.get("condition") or current.get("condition") or "").strip().lower() == "new" or "/new/" in str(listing_url or "").lower()
-                if is_new and vin:
+                if is_new and len(str(vin).strip()) >= 8:
                     v = str(vin).strip().upper()
-                    if len(v) >= 8:
-                        vdp_data["stock_number"] = v[-8:]
-                        vdp_data["condition"] = vdp_data.get("condition") or "New"
+                    vdp_data["stock_number"] = v[-8:]
+                    vdp_data["condition"] = vdp_data.get("condition") or "New"
                 store.fill_vdp_fields(row["id"], vdp_data)
                 changed = True
         except Exception:
             pass
-        if changed:
-            updated += 1
-        _time.sleep(0.15)  # polite pause between public calls
+        # NHTSA is supplemental; don't make the user wait for it before the
+        # public Lithia fields are saved.
+        try:
+            from vin_decode import decode_vin
+            nhtsa = decode_vin(vin)
+            if nhtsa:
+                store.fill_nhtsa_fields(row["id"], nhtsa)
+                changed = True
+        except Exception:
+            pass
+        return changed
+
+    updated = 0
+    if candidates:
+        with ThreadPoolExecutor(max_workers=6) as pool:
+            futures = [pool.submit(enrich, row) for row in candidates]
+            for f in as_completed(futures):
+                try:
+                    if f.result():
+                        updated += 1
+                except Exception:
+                    pass
 
     remaining = store.count_needing_enrichment()
     return jsonify({
@@ -425,7 +450,6 @@ def api_backfill_nhtsa():
         "updated": updated,
         "remaining": remaining,
     })
-
 
 @app.get("/api/vehicles")
 def api_vehicles():
@@ -520,12 +544,18 @@ def api_vehicle_detail(vehicle_id: int):
         if str(vehicle["stock_number"]).strip().upper() == str(vehicle["vin"]).strip().upper()[-8:]:
             vehicle["stock_number"] = None
 
-    if vehicle.get("listing_url"):
+    if vehicle.get("listing_url") and (still_missing or force_vdp):
         try:
             from vdp_scraper import scrape_vdp
             vdp_data = scrape_vdp(vehicle["listing_url"], known_vin=vehicle.get("vin"))
         except Exception:
             vdp_data = {}
+        # Always run the store cleanup path. This removes an old USED VIN-suffix
+        # stock number even if a public VDP request temporarily returns no data.
+        try:
+            store.fill_vdp_fields(vehicle_id, vdp_data or {})
+        except Exception:
+            pass
         if vdp_data:
             # NEW Lithia rule: the stock number shown in CarDex is always
             # the last 8 characters of the VIN. Do not substitute a different
