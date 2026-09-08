@@ -274,6 +274,22 @@ for _y in (2020, 2021, 2022, 2023, 2024, 2025):
         "feature_summary": "Midsize sedan; drivetrain and powertrain vary by year/trim.",
         "source": "Toyota Camry model-year manufacturer specifications",
     })
+    # Current 2026 Camry manufacturer reference. Toyota publishes 225 net combined hp
+    # for FWD and 232 hp for AWD; 184 hp is the gas-engine output. Keep the baseline
+    # at the mainstream FWD system output so comparisons have a concrete horsepower value.
+    MODEL_YEAR_DATA.setdefault((2026, "toyota", "camry"), {
+        "engine": "2.5L 4-cylinder hybrid",
+        "hp": 225,
+        "torque": 163,
+        "transmission": "eCVT",
+        "drivetrain": "FWD or available AWD",
+        "body_style": "Midsize sedan",
+        "towing": "Not rated for towing",
+        "flat_tow": "Not designed for recreational flat towing",
+        "feature_summary": "All-hybrid midsize sedan; 225 net combined hp FWD or 232 hp AWD depending on drivetrain.",
+        "source": "Toyota 2026 Camry manufacturer specifications",
+    })
+
     MODEL_YEAR_DATA.setdefault((_y, "nissan", "altima"), {
         "engine": "2.5L 4-cylinder gas reference",
         "hp": 188,
@@ -317,6 +333,21 @@ for _y in (2020, 2021, 2022, 2023, 2024, 2025):
         "source": "Honda Civic model-year manufacturer specifications",
     })
 
+# 2026 Civic baseline: the regular LX/Sport sedan uses a 150-hp 2.0L engine;
+# hybrid trims are 200-hp system output and Si is 200 hp. Use the regular gas
+# sedan as the model-level baseline unless exact listing data says otherwise.
+MODEL_YEAR_DATA.setdefault((2026, "honda", "civic"), {
+    "engine": "2.0L 4-cylinder gas reference",
+    "hp": 150,
+    "torque": 133,
+    "transmission": "CVT",
+    "drivetrain": "FWD",
+    "body_style": "Compact sedan / hatchback",
+    "towing": "Not rated for towing",
+    "flat_tow": "Not designed for recreational flat towing",
+    "feature_summary": "Compact car; 200-hp hybrid and 200-hp Si configurations are also offered for 2026.",
+    "source": "Honda 2026 Civic manufacturer specifications",
+})
 
 
 COMPETITORS = {
@@ -340,7 +371,7 @@ COMPETITORS = {
 
 
 def _model_profile(year: Optional[int], make: str, model: str) -> Dict[str, Any]:
-    """Resolve a model-year profile even when the listing model includes its trim."""
+    """Resolve exact model-year data first, then the nearest published year for the same model."""
     if year is None:
         return {}
 
@@ -348,19 +379,28 @@ def _model_profile(year: Optional[int], make: str, model: str) -> Dict[str, Any]
     if exact:
         return exact
 
-    # Inventory feeds sometimes put the trim after the model name, e.g.
-    # "Grand Cherokee L Laredo". Match the model-year base model without
-    # treating trim/package equipment as model-level facts.
-    candidates = [
-        (k, v) for k, v in MODEL_YEAR_DATA.items()
-        if k[0] == year and k[1] == make
+    # First try the same model in the nearest available year. This matters for
+    # current 2026 inventory when the table has manufacturer data through 2025,
+    # and for older used vehicles where an exact year is not in the reference set.
+    same_model = [
+        (abs(k[0] - year), k[0], v)
+        for k, v in MODEL_YEAR_DATA.items()
+        if k[1] == make and k[2] == model
     ]
-    candidates.sort(key=lambda item: (abs(item[0][0] - year), -len(item[0][2])))
-    for (yy, mmake, mmodel), profile in candidates:
-        if model == mmodel or model.startswith(mmodel + " ") or mmodel.startswith(model + " "):
-            # A same-model nearby-year profile is still useful model-level
-            # reference data when the exact year is not in the table.
-            return profile
+    if same_model:
+        same_model.sort(key=lambda item: (item[0], -item[1]))
+        return same_model[0][2]
+
+    # Inventory feeds sometimes put the trim after the model name. Match the
+    # model-year base model without treating trim/package equipment as facts.
+    candidates = [
+        (abs(k[0] - year), k[0], k[2], v)
+        for k, v in MODEL_YEAR_DATA.items()
+        if k[1] == make and (model == k[2] or model.startswith(k[2] + " ") or k[2].startswith(model + " "))
+    ]
+    if candidates:
+        candidates.sort(key=lambda item: (item[0], -item[1], -len(item[2])))
+        return candidates[0][3]
     return {}
 
 
@@ -511,10 +551,14 @@ def _comparison(vehicle: Dict[str, Any], rival: str) -> Dict[str, Any]:
 
     # If exact model-year numbers exist, use them. Otherwise use listing/NHTSA
     # numbers for the actual vehicle and clearly label the comparison.
-    actual_hp = _number((vehicle.get("engine_hp") or (vehicle.get("nhtsa") or {}).get("engine_hp") or base.get("hp")))
-    actual_tq = _number(vehicle.get("torque"))
+    actual_hp = _number(base.get("hp"))
+    if actual_hp is None:
+        actual_hp = _number(vehicle.get("engine_hp"))
+    if actual_hp is None:
+        actual_hp = _number((vehicle.get("nhtsa") or {}).get("engine_hp"))
+    actual_tq = _number(base.get("torque"))
     if actual_tq is None:
-        actual_tq = _number(base.get("torque"))
+        actual_tq = _number(vehicle.get("torque"))
 
     rival_hp = _number(rival_data.get("hp"))
     rival_tq = _number(rival_data.get("torque"))
