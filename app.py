@@ -225,8 +225,8 @@ INDEX_HTML = r"""
       return '<span class="chip ' + (kind || "") + '">' + text + "</span>";
     }
     function specRow(label, value) {
-      const display = value != null && value !== "" ? value : "VERIFY";
-      const cls = value != null && value !== "" ? "" : "verify";
+      const display = value != null && value !== "" ? value : "Not available in public vehicle data";
+      const cls = value != null && value !== "" ? "" : "";
       return '<div class="spec"><div class="label">' + label + '</div><div class="value ' + cls + '">' + display + "</div></div>";
     }
     function buildSales(v, nhtsa) {
@@ -269,7 +269,7 @@ INDEX_HTML = r"""
         if (v.vin) chips.push(chip("VIN verified", "ok"));
         else chips.push(chip("VIN missing", "warn"));
         if (!v.year || !v.make || !v.model) chips.push(chip("Y/M/M incomplete", "warn"));
-        if (!v.trim) chips.push(chip("Trim VERIFY", "warn"));
+        if (!v.trim) chips.push(chip("Trim not published", "warn"));
         reportBody.innerHTML =
           '<div class="report-hero">' + photo +
           '<div style="flex:1;min-width:200px;">' +
@@ -286,22 +286,22 @@ INDEX_HTML = r"""
           specRow("Year", v.year) + specRow("Make", v.make) +
           specRow("Model", v.model) + specRow("Trim", v.trim) +
           '</div>' +
-          '<div class="section-title">Specs (NHTSA / listing — VERIFY if blank)</div><div class="grid2">' +
-          specRow("Engine", engineValue) +
-          specRow("Horsepower", hp) +
-          specRow("Drivetrain", v.drivetrain || (nhtsa && nhtsa.drivetrain)) +
-          specRow("Transmission", v.transmission) +
+          '<div class="section-title">Specs (public listing / model-year reference)</div><div class="grid2">' +
+          specRow("Engine", engineValue || sales.resolved.engine) +
+          specRow("Horsepower", hp || sales.resolved.engine_hp) +
+          specRow("Drivetrain", v.drivetrain || sales.resolved.drivetrain || (nhtsa && nhtsa.drivetrain)) +
+          specRow("Transmission", v.transmission || sales.resolved.transmission) +
           specRow("Fuel", (nhtsa && nhtsa.fuel) || v.fuel_economy) +
-          specRow("Body", bodyValue) +
-          specRow("Torque", torqueValue) +
-          specRow("Flat-tow", v.flat_tow) +
-          specRow("Towing capacity", v.towing_capacity) +
+          specRow("Body", bodyValue || sales.resolved.body_style) +
+          specRow("Torque", torqueValue || sales.resolved.torque) +
+          specRow("Flat-tow", v.flat_tow || sales.resolved.flat_tow) +
+          specRow("Towing capacity", v.towing_capacity || sales.resolved.towing_capacity) +
           '</div>' +
           '<div class="section-title">Sales Brain — Best selling points</div>' +
           (sales.points.length ? sales.points.map(function(p){ return '<div class="bullet">' + p + '</div>'; }).join("") : '<div class="bullet warn">No selling points were returned for this vehicle. The Sales Brain needs to be connected to the current sales_brain.py.</div>') +
-          (sales.fallback && sales.fallback.source ? '<div class="section-title">Smart fallback</div><div class="pitch">Some vehicle-specific data was unavailable, so CarDex filled only stable same-year/model facts. Configuration-dependent items remain VERIFY.</div>' : '') +
+          (sales.fallback && sales.fallback.source ? '<div class="section-title">Smart fallback</div><div class="pitch">Some vehicle-specific data was unavailable, so CarDex filled only stable same-year/model facts. Configuration-dependent items are described as model-level references when exact listing data is unavailable.</div>' : '') +
           (sales.competitors.length ? '<div class="section-title">Competitive intelligence</div>' + sales.competitors.map(function(c){
-            var details = c.data_available ? '<div class="bullet"><strong>' + c.name + '</strong>: ' + (c.hp || 'VERIFY') + ' hp / ' + (c.torque || 'VERIFY') + ' lb-ft' + (c.engine ? ' • ' + c.engine : '') + (c.max_towing ? ' • up to ' + Number(c.max_towing).toLocaleString() + ' lbs towing' : '') + '</div>' : '<div class="bullet"><strong>' + c.name + '</strong>: model-level reference data not loaded.</div>';
+            var details = '<div class="bullet"><strong>' + c.name + '</strong>: ' + (c.hp != null ? c.hp + ' hp' : 'Horsepower: not available in current model-year reference') + (c.torque != null ? ' / ' + c.torque + ' lb-ft' : '') + (c.engine ? ' • ' + c.engine : '') + (c.max_towing != null ? ' • up to ' + Number(c.max_towing).toLocaleString() + ' lbs towing' : (c.towing_label ? ' • ' + c.towing_label : '')) + '</div>';
             var compare = (c.comparison || []).map(function(x){ return '<div class="bullet">' + x + '</div>'; }).join('');
             return details + '<div class="bullet">' + (c.angle || '') + '</div>' + compare + (c.edge ? '<div class="pitch"><strong>How to sell it:</strong> ' + c.edge + '</div>' : '');
           }).join('') + '<div style="font-size:.78rem;opacity:.7;margin-top:.5rem;">Competitor numbers are model-level references, not VIN-to-VIN matches. Maximum towing varies by configuration.</div>' : '') +
@@ -491,7 +491,7 @@ def api_vehicle_detail(vehicle_id: int):
     ])
     listing_path = str(vehicle.get("listing_url") or "").lower()
     is_new_listing = str(vehicle.get("condition") or "").strip().lower() == "new" or "/new/" in listing_path
-    if (force_vdp or still_missing or is_new_listing) and vehicle.get("listing_url"):
+    if vehicle.get("listing_url"):
         try:
             from vdp_scraper import scrape_vdp
             vdp_data = scrape_vdp(vehicle["listing_url"])
@@ -513,7 +513,7 @@ def api_vehicle_detail(vehicle_id: int):
 
             store.fill_vdp_fields(vehicle_id, vdp_data)
             for f in ("stock_number", "image_url", "mileage", "condition", "torque", "engine_hp", "transmission", "engine", "towing_capacity", "flat_tow"):
-                if vdp_data.get(f) and not vehicle.get(f):
+                if vdp_data.get(f) is not None and vdp_data.get(f) != "":
                     vehicle[f] = vdp_data[f]
             # For NEW inventory, prefer the dealership website's mileage when
             # it explicitly publishes one. Do not invent a mileage value.
