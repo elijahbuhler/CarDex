@@ -189,7 +189,7 @@ INDEX_HTML = r"""
       document.getElementById("btn-scan").disabled = false;
     }
     async function doBackfill() {
-      setStatus("Backfilling missing year/make/model from NHTSA…");
+      setStatus("Backfilling public stock numbers, mileage and vehicle info…");
       document.getElementById("btn-backfill").disabled = true;
       let totalUpdated = 0;
       try {
@@ -197,13 +197,13 @@ INDEX_HTML = r"""
           const r = await fetch("/api/backfill_nhtsa", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ limit: 40 })
+            body: JSON.stringify({ limit: 8 })
           });
           const data = await r.json();
           if (!data.ok) { setStatus("Backfill problem: " + (data.error || "unknown"), "err"); break; }
           totalUpdated += data.updated;
           if (data.checked === 0) {
-            setStatus(totalUpdated ? ("Backfill complete — updated " + totalUpdated + " vehicle(s)") : "Nothing needed backfilling", "ok");
+            setStatus(totalUpdated ? ("Backfill complete — updated " + totalUpdated + " vehicle(s)") : "Public vehicle info is already filled in", "ok");
             break;
           }
           setStatus("Backfilled " + totalUpdated + " so far — " + data.remaining + " left…");
@@ -372,17 +372,16 @@ def api_discover():
 @app.post("/api/backfill_nhtsa")
 def api_backfill_nhtsa():
     """
-    Find active vehicles with a VIN but missing year/make/model and
-    permanently fill them in from NHTSA. Processes a small batch per call
-    (so it stays well under the request timeout) — the front-end calls
-    this in a loop until nothing is left.
+    Backfill active VIN vehicles that are missing public stock/mileage (or have
+    a bad USED VIN-suffix stock), while also filling any missing VIN-decoded
+    fields. Processes a small batch per call so the front-end can loop safely.
     """
     import time as _time
     data = request.get_json(silent=True) or {}
-    limit = data.get("limit") or request.args.get("limit", 40, type=int) or 40
-    limit = max(1, min(int(limit), 100))
+    limit = data.get("limit") or request.args.get("limit", 8, type=int) or 8
+    limit = max(1, min(int(limit), 20))
 
-    candidates = store.vehicles_missing_ymm(limit=limit)
+    candidates = store.vehicles_needing_enrichment(limit=limit)
     updated = 0
     for row in candidates:
         vin = row.get("vin")
@@ -393,9 +392,10 @@ def api_backfill_nhtsa():
             nhtsa = decode_vin(vin)
         except Exception:
             nhtsa = None
+        changed = False
         if nhtsa:
             store.fill_nhtsa_fields(row["id"], nhtsa)
-            updated += 1
+            changed = True
         # Also backfill the public dealership VDP so stock number/mileage
         # appear in the backlog workflow, not only after opening a report.
         try:
@@ -411,11 +411,14 @@ def api_backfill_nhtsa():
                         vdp_data["stock_number"] = v[-8:]
                         vdp_data["condition"] = vdp_data.get("condition") or "New"
                 store.fill_vdp_fields(row["id"], vdp_data)
+                changed = True
         except Exception:
             pass
+        if changed:
+            updated += 1
         _time.sleep(0.15)  # polite pause between public calls
 
-    remaining = store.count_missing_ymm()
+    remaining = store.count_needing_enrichment()
     return jsonify({
         "ok": True,
         "checked": len(candidates),
