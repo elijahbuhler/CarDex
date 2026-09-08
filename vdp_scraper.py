@@ -54,6 +54,19 @@ def scrape_vdp(url: str) -> Dict[str, Any]:
     html = resp.text
     soup = BeautifulSoup(html, "lxml")
 
+    # Lithia's own VDP identifies the vehicle condition directly in the
+    # page/title/URL (New or Used). Prefer that dealership-page signal over
+    # any third-party feed. Never infer condition from mileage or model year.
+    host = (requests.utils.urlparse(url).hostname or "").lower()
+    path = (requests.utils.urlparse(url).path or "").lower()
+    if "lithiachryslermissoula.com" in host:
+        if "/new/" in path or re.search(r"\bnew\s+\d{4}\b", soup.get_text(" ", strip=True), re.I):
+            out["condition"] = "New"
+        elif "/used/" in path or re.search(r"\bused\s+\d{4}\b", soup.get_text(" ", strip=True), re.I):
+            out["condition"] = "Used"
+        elif "/certified/" in path or re.search(r"\bcertified\s+pre[- ]owned\b", soup.get_text(" ", strip=True), re.I):
+            out["condition"] = "Certified Pre-Owned"
+
     # --- 1) JSON-LD on the detail page: often carries stock #, mileage, photo ---
     for script in soup.find_all("script", type="application/ld+json"):
         try:
@@ -94,7 +107,23 @@ def scrape_vdp(url: str) -> Dict[str, Any]:
         if og and og.get("content"):
             out["image_url"] = og["content"].strip()
 
-    # --- 3) Raw-page fallbacks ---
+    # --- 3) Lithia direct-page extraction ---
+    # Lithia VDPs expose these exact vehicle fields in the public page's
+    # "overview" section. Prefer those values before broader Dealer.com
+    # fallbacks so CarDex records the dealership's own stock/odometer data.
+    if "lithiachryslermissoula.com" in host:
+        if not out.get("stock_number"):
+            m = re.search(r"(?i)\bStock\s+Number\s*[:#]?\s*([A-Z0-9-]+)", text)
+            if m:
+                out["stock_number"] = m.group(1).strip()
+        if not out.get("mileage"):
+            m = re.search(r"(?i)\bOdometer\s+([0-9,]+)\s*miles\b", text)
+            if not m:
+                m = re.search(r"(?i)\bMileage\s*[:#]?\s*([0-9,]+)\s*miles\b", text)
+            if m:
+                out["mileage"] = _clean_int(m.group(1))
+
+    # --- 4) Raw-page fallbacks ---
     # Dealer.com pages often put stock/mileage in inline JSON or JS rather
     # than a normal label/value element. Search the public HTML without
     # inventing a value.
@@ -128,7 +157,7 @@ def scrape_vdp(url: str) -> Dict[str, Any]:
                     out["mileage"] = cleaned
                     break
 
-    # --- 4) Dealer.com-style data attributes / embedded JSON fallback ---
+    # --- 5) Dealer.com-style data attributes / embedded JSON fallback ---
     # Many VDPs expose the same fields on DOM elements even when they are
     # not visible as a simple label/value pair. Read only explicit values.
     attr_candidates = [soup.find_all(attrs={"data-stock": True}), soup.find_all(attrs={"data-stock-number": True})]
@@ -173,7 +202,7 @@ def scrape_vdp(url: str) -> Dict[str, Any]:
             if out.get("stock_number") and out.get("mileage") is not None:
                 break
 
-    # --- 5) Spec-sheet scan for stock #, mileage, torque, towing, flat-tow ---
+    # --- 6) Spec-sheet scan for stock #, mileage, torque, towing, flat-tow ---
     for label, value in _label_value_pairs(soup).items():
         if not value:
             continue
