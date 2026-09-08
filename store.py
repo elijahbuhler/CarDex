@@ -246,6 +246,10 @@ class InventoryStore:
                 if is_new and len(vin) >= 8:
                     stock = vin[-8:]
                     v["stock_number"] = stock
+                elif (not is_new) and len(vin) >= 8 and stock.upper() == vin[-8:].upper():
+                    # Never let a feed's VIN suffix masquerade as a USED stock number.
+                    stock = ""
+                    v["stock_number"] = None
                 key = vin or (f"STOCK:{stock}" if stock else "")
                 if not key:
                     continue
@@ -269,16 +273,20 @@ class InventoryStore:
                             """
                             UPDATE vehicles
                             SET is_active = 1, last_seen_at = ?, last_price = ?,
-                                price = ?, mileage = ?, listing_url = ?, image_url = ?,
+                                price = ?,
+                                mileage = CASE WHEN ? IS NOT NULL THEN ? ELSE mileage END,
+                                listing_url = ?, image_url = ?,
                                 year = ?, make = ?, model = ?, trim = ?, condition = ?,
+                                stock_number = CASE WHEN ? IS NOT NULL AND ? <> '' THEN ? ELSE stock_number END,
                                 raw_json = ?
                             WHERE id = ?
                             """,
                             (
-                                now, price, price, v.get("mileage"),
+                                now, price, price, v.get("mileage"), v.get("mileage"),
                                 v.get("listing_url"), v.get("image_url"),
                                 v.get("year"), v.get("make"), v.get("model"),
-                                v.get("trim"), v.get("condition"), stock or None, raw,
+                                v.get("trim"), v.get("condition"),
+                                stock or None, stock, stock or None, raw,
                                 vehicle_id,
                             ),
                         )
@@ -303,16 +311,22 @@ class InventoryStore:
                                 """
                                 UPDATE vehicles
                                 SET last_seen_at = ?, last_price = price, price = ?,
-                                    mileage = ?, listing_url = ?, image_url = ?,
+                                    mileage = CASE WHEN ? IS NOT NULL THEN ? ELSE mileage END,
+                                    listing_url = ?, image_url = ?,
                                     year = ?, make = ?, model = ?, trim = ?,
-                                    condition = ?, stock_number = ?, raw_json = ?
+                                    condition = ?,
+                                    stock_number = CASE
+                                        WHEN ? IS NOT NULL AND ? <> '' THEN ?
+                                        WHEN ? IS NULL AND LENGTH(COALESCE(stock_number,'')) = 8 AND UPPER(stock_number) = UPPER(SUBSTR(COALESCE(vin,''), -8)) THEN NULL
+                                        ELSE stock_number END,
+                                    raw_json = ?
                                 WHERE id = ?
                                 """,
                                 (
-                                    now, price, v.get("mileage"),
-                                    v.get("listing_url"), v.get("image_url"),
-                                    v.get("year"), v.get("make"), v.get("model"),
-                                    v.get("trim"), v.get("condition"), stock or None, raw,
+                                    now, price, v.get("mileage"), v.get("mileage"),
+                                    v.get("listing_url"), v.get("image_url"), v.get("year"), v.get("make"), v.get("model"),
+                                    v.get("trim"), v.get("condition"),
+                                    stock or None, stock, stock or None, stock or None, raw,
                                     vehicle_id,
                                 ),
                             )
@@ -329,14 +343,20 @@ class InventoryStore:
                             conn.execute(
                                 """
                                 UPDATE vehicles
-                                SET last_seen_at = ?, mileage = ?, listing_url = ?,
-                                    image_url = ?, stock_number = CASE WHEN ? IS NOT NULL AND ? <> '' THEN ? ELSE stock_number END, raw_json = ?
+                                SET last_seen_at = ?,
+                                    mileage = CASE WHEN ? IS NOT NULL THEN ? ELSE mileage END,
+                                    listing_url = ?, image_url = ?,
+                                    stock_number = CASE
+                                        WHEN ? IS NOT NULL AND ? <> '' THEN ?
+                                        WHEN ? IS NULL AND LENGTH(COALESCE(stock_number,'')) = 8 AND UPPER(stock_number) = UPPER(SUBSTR(COALESCE(vin,''), -8)) THEN NULL
+                                        ELSE stock_number END,
+                                    raw_json = ?
                                 WHERE id = ?
                                 """,
                                 (
-                                    now, v.get("mileage"),
+                                    now, v.get("mileage"), v.get("mileage"),
                                     v.get("listing_url"), v.get("image_url"),
-                                    stock or None, stock, stock or None, raw, vehicle_id,
+                                    stock or None, stock, stock or None, stock or None, raw, vehicle_id,
                                 ),
                             )
                             stats["unchanged"] += 1
@@ -506,6 +526,22 @@ class InventoryStore:
         """
         now = _utcnow()
         with self._conn() as conn:
+            row = conn.execute("SELECT vin, stock_number, condition, listing_url FROM vehicles WHERE id = ?", (vehicle_id,)).fetchone()
+            data = dict(data or {})
+            if row:
+                vin = str(row["vin"] or "").strip().upper()
+                condition = str(row["condition"] or "").strip().lower()
+                path = str(row["listing_url"] or "").lower()
+                is_used = condition in {"used", "certified pre-owned", "cpo"} or "/used/" in path or "/certified/" in path
+                current_stock = str(row["stock_number"] or "").strip().upper()
+                incoming_stock = str(data.get("stock_number") or "").strip().upper()
+                stale_used_stock = is_used and len(vin) >= 8 and current_stock == vin[-8:]
+                if stale_used_stock and (not incoming_stock or incoming_stock == vin[-8:]):
+                    # Remove the old VIN-suffix value even when the VDP request
+                    # did not return a replacement on this pass.
+                    conn.execute("UPDATE vehicles SET stock_number = NULL WHERE id = ?", (vehicle_id,))
+                if is_used and len(vin) >= 8 and incoming_stock == vin[-8:]:
+                    data.pop("stock_number", None)
             conn.execute(
                 """
                 UPDATE vehicles SET
@@ -537,6 +573,43 @@ class InventoryStore:
                     vehicle_id,
                 ),
             )
+
+    def vehicles_needing_enrichment(self, limit: int = 10) -> List[Dict[str, Any]]:
+        """Active VIN vehicles missing public stock/mileage, or carrying a VIN-suffix stock on USED inventory."""
+        with self._conn() as conn:
+            rows = conn.execute(
+                """
+                SELECT id, vin, stock_number, mileage, condition, listing_url
+                FROM vehicles
+                WHERE is_active = 1 AND vin IS NOT NULL AND vin != ''
+                  AND (
+                    stock_number IS NULL OR stock_number = '' OR mileage IS NULL
+                    OR (LOWER(COALESCE(condition,'')) IN ('used','certified pre-owned','cpo')
+                        AND LENGTH(COALESCE(stock_number,'')) = 8
+                        AND UPPER(stock_number) = UPPER(SUBSTR(vin, -8)))
+                  )
+                ORDER BY last_seen_at DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+            return [dict(r) for r in rows]
+
+    def count_needing_enrichment(self) -> int:
+        with self._conn() as conn:
+            row = conn.execute(
+                """
+                SELECT COUNT(*) FROM vehicles
+                WHERE is_active = 1 AND vin IS NOT NULL AND vin != ''
+                  AND (
+                    stock_number IS NULL OR stock_number = '' OR mileage IS NULL
+                    OR (LOWER(COALESCE(condition,'')) IN ('used','certified pre-owned','cpo')
+                        AND LENGTH(COALESCE(stock_number,'')) = 8
+                        AND UPPER(stock_number) = UPPER(SUBSTR(vin, -8)))
+                  )
+                """
+            ).fetchone()
+            return int(row[0])
 
     def vehicles_missing_ymm(self, limit: int = 40) -> List[Dict[str, Any]]:
         """Active vehicles that have a VIN but are missing year/make/model."""
