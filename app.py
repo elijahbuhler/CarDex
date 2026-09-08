@@ -14,12 +14,12 @@ from scraper import InventoryEngine, list_adapters
 from store import InventoryStore
 from sales_brain import build_sales_brain
 
-__version__ = "2.5.0-neon-garage"
+__version__ = "2.5.1-scan-fix"
 
 # Edit this if your Lithia Missoula rooftop URL is different.
 LITHIA_MISSOULA_URL = os.environ.get(
     "CARDEX_LITHIA_URL",
-    "https://www.lithiachryslerjeepdodgeofmissoula.com/new-inventory/index.htm",
+    "https://www.lithiachryslermissoula.com/all-inventory/index.htm",
 )
 LITHIA_MISSOULA_NAME = "Lithia Missoula"
 
