@@ -275,7 +275,7 @@ class InventoryStore:
                             SET is_active = 1, last_seen_at = ?, last_price = ?,
                                 price = ?,
                                 mileage = CASE WHEN ? IS NOT NULL THEN ? ELSE mileage END,
-                                listing_url = ?, image_url = ?,
+                                listing_url = ?, image_url = CASE WHEN ? IS NOT NULL AND ? <> '' THEN ? ELSE image_url END,
                                 year = ?, make = ?, model = ?, trim = ?, condition = ?,
                                 stock_number = CASE WHEN ? IS NOT NULL AND ? <> '' THEN ? ELSE stock_number END,
                                 raw_json = ?
@@ -283,8 +283,7 @@ class InventoryStore:
                             """,
                             (
                                 now, price, price, v.get("mileage"), v.get("mileage"),
-                                v.get("listing_url"), v.get("image_url"),
-                                v.get("year"), v.get("make"), v.get("model"),
+                                v.get("listing_url"), v.get("image_url"), v.get("image_url"), v.get("year"), v.get("make"), v.get("model"),
                                 v.get("trim"), v.get("condition"),
                                 stock or None, stock, stock or None, raw,
                                 vehicle_id,
@@ -312,7 +311,7 @@ class InventoryStore:
                                 UPDATE vehicles
                                 SET last_seen_at = ?, last_price = price, price = ?,
                                     mileage = CASE WHEN ? IS NOT NULL THEN ? ELSE mileage END,
-                                    listing_url = ?, image_url = ?,
+                                    listing_url = ?, image_url = CASE WHEN ? IS NOT NULL AND ? <> '' THEN ? ELSE image_url END,
                                     year = ?, make = ?, model = ?, trim = ?,
                                     condition = ?,
                                     stock_number = CASE
@@ -324,7 +323,7 @@ class InventoryStore:
                                 """,
                                 (
                                     now, price, v.get("mileage"), v.get("mileage"),
-                                    v.get("listing_url"), v.get("image_url"), v.get("year"), v.get("make"), v.get("model"),
+                                    v.get("listing_url"), v.get("image_url"), v.get("image_url"), v.get("year"), v.get("make"), v.get("model"),
                                     v.get("trim"), v.get("condition"),
                                     stock or None, stock, stock or None, stock or None, raw,
                                     vehicle_id,
@@ -345,7 +344,7 @@ class InventoryStore:
                                 UPDATE vehicles
                                 SET last_seen_at = ?,
                                     mileage = CASE WHEN ? IS NOT NULL THEN ? ELSE mileage END,
-                                    listing_url = ?, image_url = ?,
+                                    listing_url = ?, image_url = CASE WHEN ? IS NOT NULL AND ? <> '' THEN ? ELSE image_url END,
                                     stock_number = CASE
                                         WHEN ? IS NOT NULL AND ? <> '' THEN ?
                                         WHEN ? IS NULL AND LENGTH(COALESCE(stock_number,'')) = 8 AND UPPER(stock_number) = UPPER(SUBSTR(COALESCE(vin,''), -8)) THEN NULL
@@ -355,7 +354,7 @@ class InventoryStore:
                                 """,
                                 (
                                     now, v.get("mileage"), v.get("mileage"),
-                                    v.get("listing_url"), v.get("image_url"),
+                                    v.get("listing_url"), v.get("image_url"), v.get("image_url"),
                                     stock or None, stock, stock or None, stock or None, raw, vehicle_id,
                                 ),
                             )
