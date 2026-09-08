@@ -101,7 +101,7 @@ def scrape_vdp(url: str) -> Dict[str, Any]:
     """
     Fetch a vehicle detail page and extract whatever public specs are
     present. Returns a dict containing only the fields it actually found:
-    stock_number, image_url, mileage, torque, towing_capacity, flat_tow.
+    stock_number, image_url, mileage, condition, torque, towing_capacity, flat_tow.
     """
     out: Dict[str, Any] = {}
     if not url:
@@ -180,6 +180,12 @@ def scrape_vdp(url: str) -> Dict[str, Any]:
             sku = item.get("sku") or item.get("mpn")
             if sku and not out.get("stock_number"):
                 out["stock_number"] = str(sku).strip()
+
+            item_condition = item.get("itemCondition") or item.get("condition")
+            if item_condition and not out.get("condition"):
+                cond = str(item_condition).split("/")[-1].replace("UsedCondition", "Used").replace("NewCondition", "New").replace("RefurbishedCondition", "Refurbished").strip()
+                if cond.lower() in {"used", "new", "refurbished", "certified pre-owned", "certifiedpreownedcondition"}:
+                    out["condition"] = "Certified Pre-Owned" if "certified" in cond.lower() else cond.title()
 
             odo = item.get("mileageFromOdometer")
             if isinstance(odo, dict):
