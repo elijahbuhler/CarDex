@@ -120,6 +120,16 @@ def scrape_vdp(url: str, known_vin: Optional[str] = None) -> Dict[str, Any]:
     # for used inventory where the feed page may not contain the VIN in HTML.
     supplied_vin = str(known_vin or "").strip().upper()
 
+    # IMPORTANT: resolve third-party/feed URLs by VIN BEFORE fetching the stored
+    # URL. Older inventory feeds can have dead/blocked listing URLs. The VIN is
+    # already trusted in CarDex, so going straight to Lithia is both faster and
+    # much more reliable for USED stock, mileage, condition and photos.
+    host = (requests.utils.urlparse(url).hostname or "").lower()
+    if "lithiachryslermissoula.com" not in host and supplied_vin:
+        lithia_url = _find_lithia_vdp_by_vin(supplied_vin)
+        if lithia_url:
+            return scrape_vdp(lithia_url, known_vin=supplied_vin)
+
     resp = None
     for attempt in range(2):
         try:
@@ -134,31 +144,13 @@ def scrape_vdp(url: str, known_vin: Optional[str] = None) -> Dict[str, Any]:
     html = resp.text
     soup = BeautifulSoup(html, "lxml")
 
-    # If CarDex's stored listing URL is a third-party/public feed URL,
-    # resolve the VIN against Lithia's own public inventory and then read the
-    # exact Lithia VDP. This makes Lithia the source of truth for stock,
-    # mileage and condition.
-    host = (requests.utils.urlparse(url).hostname or "").lower()
+    # If the stored URL is a third-party URL and the page itself contains the
+    # VIN, use that VIN as a second-chance resolver.
     if "lithiachryslermissoula.com" not in host:
         vin = supplied_vin or _extract_vin(html)
         lithia_url = _find_lithia_vdp_by_vin(vin) if vin else None
         if lithia_url:
-            try:
-                lr = requests.get(
-                    lithia_url,
-                    headers={
-                        "User-Agent": USER_AGENT,
-                        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                        "Accept-Language": "en-US,en;q=0.9",
-                    },
-                    timeout=15,
-                )
-                if lr.status_code == 200:
-                    # Parse the Lithia VDP recursively, but stop here so we
-                    # don't recurse again into the non-Lithia URL.
-                    return scrape_vdp(lithia_url, known_vin=vin)
-            except requests.RequestException:
-                pass
+            return scrape_vdp(lithia_url, known_vin=vin)
 
     # Lithia's own VDP identifies the vehicle condition directly in the
     # page/title/URL (New or Used). Prefer that dealership-page signal over
@@ -267,6 +259,16 @@ def scrape_vdp(url: str, known_vin: Optional[str] = None) -> Dict[str, Any]:
         if og and og.get("content"):
             out["image_url"] = og["content"].strip()
 
+    # Final public-photo fallback: Dealer.com frequently lazy-loads the first
+    # vehicle photo into data-src/data-lazy-src rather than JSON-LD or og:image.
+    if not out.get("image_url"):
+        for img in soup.find_all("img"):
+            candidate = (img.get("data-src") or img.get("data-lazy-src") or img.get("data-original") or img.get("src") or "").strip()
+            low = candidate.lower()
+            if candidate and candidate.startswith(("http://", "https://", "//")) and not any(x in low for x in ("logo", "icon", "placeholder", "avatar", "kbb", "carfax")):
+                out["image_url"] = candidate if not candidate.startswith("//") else "https:" + candidate
+                break
+
     # Build visible text before any dealership-specific extraction.
     text = soup.get_text(" ", strip=True)
 
@@ -285,6 +287,51 @@ def scrape_vdp(url: str, known_vin: Optional[str] = None) -> Dict[str, Any]:
                 m = re.search(r"(?i)\bMileage\s*[:#]?\s*([0-9,]+)\s*miles\b", text)
             if m:
                 out["mileage"] = _clean_int(m.group(1))
+
+    # Lithia's current public VDP uses an overview block with exact labels.
+    # Keep these patterns deliberately broad because Dealer.com can put labels
+    # and values in separate spans or use slightly different punctuation.
+    overview_patterns = {
+        "mileage": [
+            r"(?i)\bOdometer\s+([0-9,]+)\s*miles?\b",
+            r"(?i)\bMileage\s*[:#-]?\s*([0-9,]+)\s*miles?\b",
+        ],
+        "stock_number": [
+            r"(?i)\bStock\s+Number\s*[:#-]?\s*([A-Z0-9-]{3,24})\b",
+            r"(?i)\bStock\s*#\s*[:#-]?\s*([A-Z0-9-]{3,24})\b",
+        ],
+        "engine_hp": [
+            r"(?i)\bHorsepower\s*[:#-]?\s*([0-9]{2,4})\s*(?:hp|horsepower)\b",
+            r"(?i)\bEngine\s+horsepower\s*[:#-]?\s*([0-9]{2,4})\s*hp\b",
+        ],
+        "torque": [
+            r"(?i)\bTorque\s*[:#-]?\s*([0-9]{2,4})\s*lb\.?[- ]?ft\b",
+            r"(?i)\bEngine\s+torque\s*[:#-]?\s*([0-9]{2,4})\s*lb\.?[- ]?ft\b",
+        ],
+        "transmission": [
+            r"(?i)\bTransmission\s*[:#-]?\s*([A-Za-z0-9 .\-/()]+?)(?=\s+(?:Drivetrain|Engine|VIN|Stock Number|Horsepower|Torque)\b|$)",
+        ],
+    }
+    if not out.get("stock_number") or not out.get("mileage") or not out.get("engine_hp") or not out.get("torque") or not out.get("transmission"):
+        for field, patterns in overview_patterns.items():
+            if out.get(field):
+                continue
+            for pat in patterns:
+                m = re.search(pat, text)
+                if not m:
+                    continue
+                val = m.group(1).strip()
+                if field == "mileage":
+                    val = _clean_int(val)
+                elif field == "engine_hp":
+                    val = _clean_int(val)
+                elif field == "torque":
+                    val = f"{_clean_int(val)} lb-ft" if _clean_int(val) else None
+                elif field == "transmission":
+                    val = re.sub(r"\s+", " ", val).strip(" .:-")
+                if val not in (None, ""):
+                    out[field] = val
+                    break
 
     # Additional public Dealer.com/Lithia text formats. These are common on
     # older used VDPs where the labels are rendered as separate text nodes.
