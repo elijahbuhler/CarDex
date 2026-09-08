@@ -103,8 +103,8 @@ def scrape_vdp(url: str) -> Dict[str, Any]:
 
     if not out.get("stock_number"):
         stock_patterns = [
-            r'"(?:stockNumber|stock_number|stockNo|stock)"\\s*:\\s*"([^"]+)"',
-            r"(?i)\\b(?:stock|stock\\s*#|stock\\s*number)\\s*[:#-]?\\s*([A-Z0-9-]{3,})",
+            r'"(?:stockNumber|stock_number|stockNo|stock)"\s*:\s*"([^"]+)"',
+            r'(?i)\b(?:stock|stock\s*#|stock\s*number)\s*[:#-]?\s*([A-Z0-9-]{3,})',
         ]
         for pat in stock_patterns:
             m = re.search(pat, raw if '"' in pat else text)
@@ -116,8 +116,8 @@ def scrape_vdp(url: str) -> Dict[str, Any]:
 
     if not out.get("mileage"):
         mileage_patterns = [
-            r'"(?:mileage|odometer|mileageValue)"\\s*:\\s*(?:"([0-9,]+)"|([0-9,]+))',
-            r"(?i)\\b(?:mileage|odometer)\\s*[:#-]?\\s*([0-9,]+)\\s*(?:mi|miles)?",
+            r'"(?:mileage|odometer|mileageValue)"\s*:\s*(?:"([0-9,]+)"|([0-9,]+))',
+            r'(?i)\b(?:mileage|odometer)\s*[:#-]?\s*([0-9,]+)\s*(?:mi|miles)?',
         ]
         for pat in mileage_patterns:
             m = re.search(pat, raw if '"' in pat else text)
@@ -128,7 +128,52 @@ def scrape_vdp(url: str) -> Dict[str, Any]:
                     out["mileage"] = cleaned
                     break
 
-    # --- 4) Spec-sheet scan for stock #, mileage, torque, towing, flat-tow ---
+    # --- 4) Dealer.com-style data attributes / embedded JSON fallback ---
+    # Many VDPs expose the same fields on DOM elements even when they are
+    # not visible as a simple label/value pair. Read only explicit values.
+    attr_candidates = [soup.find_all(attrs={"data-stock": True}), soup.find_all(attrs={"data-stock-number": True})]
+    if not out.get("stock_number"):
+        for nodes in attr_candidates:
+            for node in nodes:
+                val = node.get("data-stock") or node.get("data-stock-number")
+                if val and str(val).strip():
+                    out["stock_number"] = str(val).strip()
+                    break
+            if out.get("stock_number"):
+                break
+
+    if not out.get("mileage"):
+        for attr in ("data-mileage", "data-odometer", "data-miles"):
+            for node in soup.find_all(attrs={attr: True}):
+                val = _clean_int(node.get(attr))
+                if val is not None:
+                    out["mileage"] = val
+                    break
+            if out.get("mileage") is not None:
+                break
+
+    # Some Dealer.com pages expose vehicle data in application-state scripts.
+    # Scan script text for explicit stock/odometer keys before giving up.
+    if not out.get("stock_number") or not out.get("mileage"):
+        for script in soup.find_all("script"):
+            st = script.string or script.get_text() or ""
+            if not st:
+                continue
+            if not out.get("stock_number"):
+                m = re.search(r'"(?:stockNumber|stock_number|stockNo|stock)"\s*:\s*"([^"]+)"', st)
+                if m:
+                    out["stock_number"] = m.group(1).strip()
+            if not out.get("mileage"):
+                m = re.search(r'"(?:mileage|odometer|mileageValue)"\s*:\s*(?:"([0-9,]+)"|([0-9,]+))', st)
+                if m:
+                    val = next((g for g in m.groups() if g), None)
+                    cleaned = _clean_int(val)
+                    if cleaned is not None:
+                        out["mileage"] = cleaned
+            if out.get("stock_number") and out.get("mileage") is not None:
+                break
+
+    # --- 5) Spec-sheet scan for stock #, mileage, torque, towing, flat-tow ---
     for label, value in _label_value_pairs(soup).items():
         if not value:
             continue
