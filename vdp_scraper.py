@@ -14,6 +14,7 @@ Only returns keys it actually found on the page. Safe to call repeatedly
 from __future__ import annotations
 
 import json
+import re
 from typing import Any, Dict, Optional
 
 import requests
@@ -93,7 +94,41 @@ def scrape_vdp(url: str) -> Dict[str, Any]:
         if og and og.get("content"):
             out["image_url"] = og["content"].strip()
 
-    # --- 3) Spec-sheet scan for stock #, mileage, torque, towing, flat-tow ---
+    # --- 3) Raw-page fallbacks ---
+    # Dealer.com pages often put stock/mileage in inline JSON or JS rather
+    # than a normal label/value element. Search the public HTML without
+    # inventing a value.
+    text = soup.get_text(" ", strip=True)
+    raw = html
+
+    if not out.get("stock_number"):
+        stock_patterns = [
+            r'"(?:stockNumber|stock_number|stockNo|stock)"\\s*:\\s*"([^"]+)"',
+            r"(?i)\\b(?:stock|stock\\s*#|stock\\s*number)\\s*[:#-]?\\s*([A-Z0-9-]{3,})",
+        ]
+        for pat in stock_patterns:
+            m = re.search(pat, raw if '"' in pat else text)
+            if m:
+                val = m.group(1).strip()
+                if val and val.lower() not in {"number", "no"}:
+                    out["stock_number"] = val
+                    break
+
+    if not out.get("mileage"):
+        mileage_patterns = [
+            r'"(?:mileage|odometer|mileageValue)"\\s*:\\s*(?:"([0-9,]+)"|([0-9,]+))',
+            r"(?i)\\b(?:mileage|odometer)\\s*[:#-]?\\s*([0-9,]+)\\s*(?:mi|miles)?",
+        ]
+        for pat in mileage_patterns:
+            m = re.search(pat, raw if '"' in pat else text)
+            if m:
+                val = next((g for g in m.groups() if g), None)
+                cleaned = _clean_int(val)
+                if cleaned is not None:
+                    out["mileage"] = cleaned
+                    break
+
+    # --- 4) Spec-sheet scan for stock #, mileage, torque, towing, flat-tow ---
     for label, value in _label_value_pairs(soup).items():
         if not value:
             continue
