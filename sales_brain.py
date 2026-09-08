@@ -1,48 +1,158 @@
 """
-CarDex Sales Brain V2.3 — competitive knowledge layer.
+CarDex Sales Brain V3 — model-year sales intelligence.
 
-Rules:
-- Exact listing/VIN data wins.
-- Same-year/model fallback is used only for stable, high-confidence facts.
-- Competitive numbers are model-level reference data, not VIN-to-VIN matches.
-- Configuration-dependent claims are labeled as such.
-- Never invent a trim-specific feature or towing/flat-tow capability.
+Design:
+- Exact listing/VIN data wins for vehicle-specific facts.
+- Model-year facts are used for ordinary specs such as engine, transmission,
+  drivetrain layout, horsepower, torque and published maximum towing.
+- Trim/package/accessory features are NEVER assumed unless the listing/VIN
+  proves them.
+- Competitor comparisons are model-year references, NOT competitor VIN lookups.
 """
+
 from __future__ import annotations
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, Tuple
 
-MODEL_FALLBACKS: Dict[tuple, Dict[str, Any]] = {
-    (2025, "jeep", "grand cherokee"): {
-        "engine": "3.6L V6",
-        "engine_hp": 293,
-        "torque": "260 lb-ft",
+
+def _clean(v: Any) -> str:
+    return str(v or "").strip().lower()
+
+
+def _year(v: Any) -> Optional[int]:
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return None
+
+
+def _key(vehicle: Dict[str, Any]) -> Tuple[Optional[int], str, str]:
+    return (_year(vehicle.get("year")), _clean(vehicle.get("make")), _clean(vehicle.get("model")))
+
+
+# Model-year reference facts. These are deliberately model-level.
+# Trim-specific options/packages are not included here.
+MODEL_YEAR_DATA: Dict[Tuple[int, str, str], Dict[str, Any]] = {
+    # 2020 Grand Cherokee — manufacturer model-level information.
+    (2020, "jeep", "grand cherokee"): {
+        "engine": "3.6L Pentastar V6",
+        "hp": 295,
+        "torque": 260,
+        "transmission": "8-speed automatic",
+        "drivetrain": "2WD or available 4x4",
         "body_style": "SUV",
-        "notes": "2025 Grand Cherokee model-level V6 figures. Exact trim/drivetrain still matters for equipment and towing.",
+        "towing": "Up to 6,200 lbs with the proper engine/equipment",
+        "flat_tow": "Certain 4x4 configurations can be flat-towed; transfer-case/procedure requirements apply",
+        "feature_summary": "5-passenger SUV; available 4x4 systems; available Selec-Terrain capability; trim/package equipment varies.",
+        "source": "2020 Jeep model information",
     },
-    (2025, "jeep", "grand cherokee l"): {
-        "engine": "3.6L V6",
-        "engine_hp": 293,
-        "torque": "260 lb-ft",
+    (2020, "ford", "explorer"): {
+        "engine": "2.3L EcoBoost I-4",
+        "hp": 300,
+        "torque": 310,
+        "transmission": "10-speed automatic",
+        "drivetrain": "RWD or available Intelligent 4WD",
         "body_style": "3-row SUV",
-        "notes": "2025 Grand Cherokee L model-level V6 figures. Exact trim/drivetrain still matters for equipment and towing.",
+        "towing": "Up to 5,600 lbs when properly equipped",
+        "flat_tow": "Not a general model-level flat-tow claim; verify exact configuration/owner manual",
+        "feature_summary": "3-row SUV; rear-wheel-drive-based platform; available Intelligent 4WD and Terrain Management.",
+        "source": "2020 Ford Explorer model information",
+    },
+    (2020, "toyota", "highlander"): {
+        "engine": "3.5L V6",
+        "hp": 295,
+        "torque": 263,
+        "transmission": "8-speed automatic",
+        "drivetrain": "FWD or available AWD",
+        "body_style": "3-row SUV",
+        "towing": "Up to 5,000 lbs when properly equipped",
+        "flat_tow": "Verify exact configuration/owner manual",
+        "feature_summary": "3-row family SUV; strong family/comfort positioning; available AWD.",
+        "source": "2020 Toyota Highlander model information",
+    },
+    (2020, "honda", "pilot"): {
+        "engine": "3.5L V6",
+        "hp": 280,
+        "torque": 262,
+        "transmission": "9-speed automatic on most trims; 6-speed on LX",
+        "drivetrain": "FWD or available AWD",
+        "body_style": "3-row SUV",
+        "towing": "Up to 5,000 lbs when properly equipped",
+        "flat_tow": "Verify exact configuration/owner manual",
+        "feature_summary": "3-row family SUV; available AWD; strong family-space and safety positioning.",
+        "source": "2020 Honda Pilot model information",
+    },
+    (2020, "toyota", "4runner"): {
+        "engine": "4.0L V6",
+        "hp": 270,
+        "torque": 278,
+        "transmission": "5-speed automatic",
+        "drivetrain": "2WD or available 4WD",
+        "body_style": "SUV",
+        "towing": "Up to 5,000 lbs",
+        "flat_tow": "Verify exact configuration/owner manual",
+        "feature_summary": "Body-on-frame SUV; available part-time 4WD; 4WD systems include low-range capability.",
+        "source": "2020 Toyota 4Runner model information",
+    },
+    (2020, "chevrolet", "traverse"): {
+        "engine": "3.6L V6",
+        "hp": 310,
+        "torque": 266,
+        "transmission": "9-speed automatic",
+        "drivetrain": "FWD or available AWD",
+        "body_style": "3-row SUV",
+        "towing": "Up to 5,000 lbs when properly equipped",
+        "flat_tow": "Verify exact configuration/owner manual",
+        "feature_summary": "3-row crossover; strong passenger/cargo-space positioning; available AWD.",
+        "source": "2020 Chevrolet Traverse model information",
+    },
+
+    # 2021 common comparisons.
+    (2021, "jeep", "grand cherokee"): {
+        "engine": "3.6L Pentastar V6",
+        "hp": 293, "torque": 260, "transmission": "8-speed automatic",
+        "drivetrain": "2WD or available 4x4", "body_style": "SUV",
+        "towing": "Up to 6,200 lbs with proper equipment",
+        "flat_tow": "Certain 4x4 configurations can be flat-towed; verify transfer-case requirements",
+        "feature_summary": "5-passenger SUV; available 4x4 systems; trim/package equipment varies.",
+        "source": "2021 Jeep Grand Cherokee model information",
+    },
+    (2021, "ford", "explorer"): {
+        "engine": "2.3L EcoBoost I-4", "hp": 300, "torque": 310,
+        "transmission": "10-speed automatic", "drivetrain": "RWD or available Intelligent 4WD",
+        "body_style": "3-row SUV", "towing": "Up to 5,600 lbs when properly equipped",
+        "flat_tow": "Verify exact configuration/owner manual",
+        "feature_summary": "3-row SUV; rear-wheel-drive-based platform; available 4WD and Terrain Management.",
+        "source": "2021 Ford Explorer model information",
+    },
+    (2021, "toyota", "highlander"): {
+        "engine": "3.5L V6", "hp": 295, "torque": 263,
+        "transmission": "8-speed automatic", "drivetrain": "FWD or available AWD",
+        "body_style": "3-row SUV", "towing": "Up to 5,000 lbs when properly equipped",
+        "flat_tow": "Verify exact configuration/owner manual",
+        "feature_summary": "3-row family SUV; available AWD; family/comfort-oriented packaging.",
+        "source": "2021 Toyota Highlander model information",
+    },
+    (2021, "honda", "pilot"): {
+        "engine": "3.5L V6", "hp": 280, "torque": 262,
+        "transmission": "9-speed automatic on most trims; 6-speed on LX",
+        "drivetrain": "FWD or available AWD", "body_style": "3-row SUV",
+        "towing": "Up to 5,000 lbs when properly equipped",
+        "flat_tow": "Verify exact configuration/owner manual",
+        "feature_summary": "3-row family SUV; available AWD; family-space and safety positioning.",
+        "source": "2021 Honda Pilot model information",
+    },
+    (2021, "toyota", "4runner"): {
+        "engine": "4.0L V6", "hp": 270, "torque": 278,
+        "transmission": "5-speed automatic", "drivetrain": "2WD or available 4WD",
+        "body_style": "SUV", "towing": "Up to 5,000 lbs",
+        "flat_tow": "Verify exact configuration/owner manual",
+        "feature_summary": "Body-on-frame SUV; available 4WD and low-range capability.",
+        "source": "2021 Toyota 4Runner model information",
     },
 }
 
-# Same-year model-level competitive reference data. These are intentionally
-# kept separate from the actual vehicle so CarDex never pretends it found a
-# competitor VIN with matching equipment.
-COMPETITIVE_DATA: Dict[tuple, Dict[str, Dict[str, Any]]] = {
-    (2025, "jeep", "grand cherokee"): {
-        "Jeep Grand Cherokee": {"hp": 293, "torque": 260, "engine": "3.6L V6", "max_towing": 6200, "source": "Edmunds / manufacturer model specs"},
-        "Ford Explorer": {"hp": 300, "torque": 310, "engine": "2.3L EcoBoost I-4", "max_towing": 5000, "source": "Ford 2025 Explorer specs"},
-        "Toyota Highlander": {"hp": 265, "torque": 310, "engine": "2.4L turbo I-4", "max_towing": 5000, "source": "Toyota 2025 Highlander specs"},
-        "Honda Pilot": {"hp": 285, "torque": 262, "engine": "3.5L V6", "max_towing": 5000, "source": "Honda 2025 Pilot specs"},
-        "Chevrolet Traverse": {"hp": 328, "torque": 326, "engine": "2.5L turbo I-4", "max_towing": 5000, "source": "Chevrolet 2025 Traverse specs"},
-    },
-}
-
-COMPETITORS: Dict[str, List[str]] = {
-    "jeep grand cherokee": ["Ford Explorer", "Toyota Highlander", "Honda Pilot", "Chevrolet Traverse"],
+COMPETITORS = {
+    "jeep grand cherokee": ["Ford Explorer", "Toyota Highlander", "Honda Pilot", "Toyota 4Runner", "Chevrolet Traverse"],
     "jeep grand cherokee l": ["Ford Explorer", "Toyota Grand Highlander", "Honda Pilot", "Chevrolet Traverse"],
     "jeep wrangler": ["Ford Bronco", "Toyota 4Runner"],
     "jeep compass": ["Ford Escape", "Honda CR-V", "Toyota RAV4"],
@@ -50,233 +160,308 @@ COMPETITORS: Dict[str, List[str]] = {
     "ram 1500": ["Ford F-150", "Chevrolet Silverado 1500", "GMC Sierra 1500", "Toyota Tundra"],
     "ram 2500": ["Ford F-250", "Chevrolet Silverado 2500HD", "GMC Sierra 2500HD"],
     "ram 3500": ["Ford F-350", "Chevrolet Silverado 3500HD", "GMC Sierra 3500HD"],
+    "ford explorer": ["Jeep Grand Cherokee", "Toyota Highlander", "Honda Pilot", "Chevrolet Traverse"],
+    "toyota highlander": ["Jeep Grand Cherokee", "Ford Explorer", "Honda Pilot", "Chevrolet Traverse"],
+    "honda pilot": ["Jeep Grand Cherokee", "Ford Explorer", "Toyota Highlander", "Chevrolet Traverse"],
+    "toyota 4runner": ["Jeep Grand Cherokee", "Ford Bronco"],
+    "chevrolet traverse": ["Jeep Grand Cherokee", "Ford Explorer", "Toyota Highlander", "Honda Pilot"],
 }
 
 
-def _clean(value: Any) -> str:
-    return str(value or "").strip().lower()
+def _model_profile(year: Optional[int], make: str, model: str) -> Dict[str, Any]:
+    if year is None:
+        return {}
+    return MODEL_YEAR_DATA.get((year, make, model), {})
 
 
-def _model_key(vehicle: Dict[str, Any]) -> tuple | None:
-    try:
-        year = int(vehicle.get("year"))
-    except (TypeError, ValueError):
-        return None
-    make = _clean(vehicle.get("make")); model = _clean(vehicle.get("model"))
-    return (year, make, model) if make and model else None
+def _general_profile(year: Optional[int], make: str, model: str) -> Dict[str, Any]:
+    """Return only stable family-level facts when an exact model-year table entry isn't present."""
+    if not make or not model:
+        return {}
+    # These are deliberately descriptive rather than invented numbers.
+    families = {
+        "jeep grand cherokee": {
+            "body_style": "5-passenger SUV",
+            "feature_summary": "5-passenger SUV with available 4x4 capability; trim/package equipment varies.",
+            "flat_tow": "Flat-tow capability depends on the exact drivetrain/transfer-case configuration; verify owner manual.",
+        },
+        "ford explorer": {
+            "body_style": "3-row SUV",
+            "feature_summary": "3-row SUV with rear-wheel-drive-based architecture on modern generations; drivetrain and equipment vary by year/trim.",
+            "flat_tow": "Verify exact configuration/owner manual.",
+        },
+        "toyota highlander": {
+            "body_style": "3-row SUV",
+            "feature_summary": "3-row family SUV; FWD/AWD and powertrains vary by year.",
+            "flat_tow": "Verify exact configuration/owner manual.",
+        },
+        "honda pilot": {
+            "body_style": "3-row SUV",
+            "feature_summary": "3-row family SUV with FWD/AWD availability depending on year.",
+            "flat_tow": "Verify exact configuration/owner manual.",
+        },
+        "toyota 4runner": {
+            "body_style": "SUV",
+            "feature_summary": "Body-on-frame SUV with available 4WD/low-range capability depending on trim/year.",
+            "flat_tow": "Verify exact configuration/owner manual.",
+        },
+    }
+    return families.get(f"{make} {model}", {})
 
 
-def resolve_fallbacks(vehicle: Dict[str, Any], nhtsa: Dict[str, Any] | None) -> Dict[str, Any]:
-    nhtsa = nhtsa or {}; result: Dict[str, Any] = {}
-    profile = MODEL_FALLBACKS.get(_model_key(vehicle), {})
-    if not vehicle.get("engine") and not nhtsa.get("engine") and profile.get("engine"):
-        result["engine"] = profile["engine"]
-    if not nhtsa.get("engine_hp") and not vehicle.get("engine_hp") and profile.get("engine_hp"):
-        result["engine_hp"] = profile["engine_hp"]
+def resolve_fallbacks(vehicle: Dict[str, Any], nhtsa: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    nhtsa = nhtsa or {}
+    year, make, model = _key(vehicle)
+    profile = _model_profile(year, make, model) or _general_profile(year, make, model)
+    result: Dict[str, Any] = {}
+
+    for field in ("engine", "transmission", "drivetrain", "body_style", "flat_tow", "towing_capacity"):
+        if not vehicle.get(field) and profile.get(field):
+            result[field] = profile[field]
+
+    if not nhtsa.get("engine_hp") and not vehicle.get("engine_hp") and profile.get("hp"):
+        result["engine_hp"] = profile["hp"]
     if not vehicle.get("torque") and profile.get("torque"):
-        result["torque"] = profile["torque"]
-    if not vehicle.get("body_style") and not nhtsa.get("body_style") and profile.get("body_style"):
-        result["body_style"] = profile["body_style"]
+        result["torque"] = f"{profile['torque']} lb-ft"
+
     if profile:
-        result.update(source="CarDex model-level fallback", confidence="high", note=profile.get("notes", ""))
+        result["source"] = "CarDex model-year reference"
+        result["confidence"] = "model-level"
+        result["note"] = "General model-year facts are used only for ordinary specifications. Trim/package/add-on equipment is not assumed."
     return result
 
 
 def competitor_list(vehicle: Dict[str, Any]) -> List[str]:
     key = f"{_clean(vehicle.get('make'))} {_clean(vehicle.get('model'))}".strip()
-    if key in COMPETITORS: return COMPETITORS[key]
-    model = _clean(vehicle.get("model"))
-    if "explorer" in model: return ["Jeep Grand Cherokee", "Toyota Highlander", "Honda Pilot", "Chevrolet Traverse"]
-    if "highlander" in model: return ["Jeep Grand Cherokee", "Ford Explorer", "Honda Pilot", "Chevrolet Traverse"]
-    if "pilot" in model: return ["Jeep Grand Cherokee", "Ford Explorer", "Toyota Highlander", "Chevrolet Traverse"]
-    if "traverse" in model: return ["Jeep Grand Cherokee", "Ford Explorer", "Toyota Highlander", "Honda Pilot"]
+    if key in COMPETITORS:
+        return COMPETITORS[key]
     return []
 
 
-def _competitive_numbers(year: Any, make: str, model: str, rival: str) -> Dict[str, Any] | None:
-    data = COMPETITIVE_DATA.get((int(year), make, model), {}) if str(year).isdigit() else {}
-    return data.get(rival)
+def _profile_for_name(year: Optional[int], name: str) -> Dict[str, Any]:
+    parts = name.lower().split()
+    if len(parts) < 2:
+        return {}
+    make = parts[0]
+    model = " ".join(parts[1:])
+    # Map brand spellings.
+    return _model_profile(year, make, model) or _general_profile(year, make, model)
 
 
-def _comparison(vehicle_data: Dict[str, Any], rival_data: Dict[str, Any] | None, rival: str) -> Dict[str, Any]:
-    """Build a safe model-level competitor comparison. Never let bad/missing data crash a report."""
-    if not rival_data or not vehicle_data:
-        return {
-            "name": rival,
-            "data_available": False,
-            "angle": "Ask what the customer likes about this competitor, then compare those priorities against this vehicle's verified equipment.",
-            "comparison": [
-                f"Competitor reference: {rival}.",
-                "Exact competitor trim/equipment is not being represented as a VIN-to-VIN match.",
-                "Use the customer's stated priority (price, power, space, fuel economy, towing, technology or capability) for the side-by-side comparison.",
-            ],
-        }
-
-    def num(value):
-        try:
-            return float(value) if value is not None and str(value).strip() != "" else None
-        except (TypeError, ValueError):
+def _number(v: Any) -> Optional[float]:
+    try:
+        if v is None or str(v).strip() == "":
             return None
+        return float(v)
+    except (TypeError, ValueError):
+        return None
 
-    hp = num(vehicle_data.get("hp")); rhp = num(rival_data.get("hp"))
-    tq = num(vehicle_data.get("torque")); rtq = num(rival_data.get("torque"))
-    tow = num(vehicle_data.get("max_towing")); rtow = num(rival_data.get("max_towing"))
-    lines = []
 
-    def fmt_num(v):
-        if v is None: return "VERIFY"
-        return f"{int(v) if float(v).is_integer() else v:g}"
+def _comparison(vehicle: Dict[str, Any], rival: str) -> Dict[str, Any]:
+    year, make, model = _key(vehicle)
+    base = _model_profile(year, make, model) or _general_profile(year, make, model)
+    rival_data = _profile_for_name(year, rival)
 
-    if hp is not None and rhp is not None:
-        delta = hp - rhp
-        lines.append(f"Power: {fmt_num(hp)} hp vs {fmt_num(rhp)} hp ({'+' if delta >= 0 else ''}{fmt_num(delta)} hp for this Jeep reference).")
-    if tq is not None and rtq is not None:
-        delta = tq - rtq
-        lines.append(f"Torque: {fmt_num(tq)} lb-ft vs {fmt_num(rtq)} lb-ft ({'+' if delta >= 0 else ''}{fmt_num(delta)} lb-ft for this Jeep reference).")
-    if tow is not None and rtow is not None:
-        lines.append(f"Max towing: up to {int(tow):,} lbs vs up to {int(rtow):,} lbs — verify exact configuration before quoting.")
+    # If exact model-year numbers exist, use them. Otherwise use listing/NHTSA
+    # numbers for the actual vehicle and clearly label the comparison.
+    actual_hp = _number((vehicle.get("engine_hp") or (vehicle.get("nhtsa") or {}).get("engine_hp") or base.get("hp")))
+    actual_tq = _number(vehicle.get("torque"))
+    if actual_tq is None:
+        actual_tq = _number(base.get("torque"))
 
-    wins = []
-    if hp is not None and rhp is not None and hp > rhp: wins.append("horsepower")
-    if tq is not None and rtq is not None and tq > rtq: wins.append("torque")
-    if tow is not None and rtow is not None and tow > rtow: wins.append("maximum listed towing")
-    if wins:
-        edge = "Jeep edge: " + ", ".join(wins) + "."
+    rival_hp = _number(rival_data.get("hp"))
+    rival_tq = _number(rival_data.get("torque"))
+
+    lines: List[str] = []
+    if actual_hp is not None and rival_hp is not None:
+        delta = actual_hp - rival_hp
+        lines.append(f"Power: {int(actual_hp)} hp vs {int(rival_hp)} hp ({'+' if delta >= 0 else ''}{int(delta)} hp).")
+    if actual_tq is not None and rival_tq is not None:
+        delta = actual_tq - rival_tq
+        lines.append(f"Torque: {int(actual_tq)} lb-ft vs {int(rival_tq)} lb-ft ({'+' if delta >= 0 else ''}{int(delta)} lb-ft).")
+    if base.get("transmission") and rival_data.get("transmission"):
+        lines.append(f"Transmission: {base['transmission']} vs {rival_data['transmission']}.")
+    if base.get("drivetrain") and rival_data.get("drivetrain"):
+        lines.append(f"Drivetrain: {base['drivetrain']} vs {rival_data['drivetrain']}.")
+    if base.get("body_style") and rival_data.get("body_style"):
+        lines.append(f"Vehicle format: {base['body_style']} vs {rival_data['body_style']}.")
+    if base.get("towing") and rival_data.get("towing"):
+        lines.append(f"Towing reference: {base['towing']} vs {rival_data['towing']}.")
+
+    if rival_data.get("feature_summary"):
+        lines.append(f"{rival} model-year focus: {rival_data['feature_summary']}")
+
+    if make == "jeep" and "grand cherokee" in model:
+        if rival.lower().startswith("ford explorer"):
+            angle = "The Explorer is a serious 3-row competitor. Sell the Grand Cherokee around its 5-passenger size, Jeep capability identity and the actual 4x4/equipment on this vehicle—not a made-up feature."
+        elif rival.lower().startswith("toyota highlander"):
+            angle = "The Highlander is strongly family-oriented and offers 3-row packaging. Ask whether the customer needs that extra row or prefers the Grand Cherokee's 5-passenger size and Jeep capability focus."
+        elif rival.lower().startswith("honda pilot"):
+            angle = "The Pilot is another strong 3-row family SUV. If the customer doesn't need three rows, position the Grand Cherokee around its 5-passenger layout, Jeep identity and available 4x4 capability."
+        elif rival.lower().startswith("toyota 4runner"):
+            angle = "The 4Runner is the more traditional body-on-frame/off-road competitor. Sell the Grand Cherokee when the customer wants a more road-friendly SUV while still having available 4x4 capability."
+        elif rival.lower().startswith("chevrolet"):
+            angle = "Traverse emphasizes three-row space. If the customer doesn't need the extra row, focus the Grand Cherokee discussion on size, driving feel, Jeep capability and the equipment actually on this vehicle."
+        else:
+            angle = f"Compare the customer's priorities directly against the {rival} rather than attacking the other brand."
     else:
-        edge = "Do not sell this as a raw power advantage; sell the Jeep's overall fit, capability character and the verified equipment on this actual vehicle."
+        angle = f"Use the {rival} as a model-year reference. Compare the customer's priorities—power, space, drivetrain, towing, technology and price—against this vehicle's verified equipment."
+
+    edge = "No raw advantage established; sell the fit and verified equipment."
+    if actual_hp is not None and rival_hp is not None and actual_hp > rival_hp:
+        edge = f"Power advantage: this vehicle's reference power is {int(actual_hp)} hp vs {int(rival_hp)} hp."
+    elif actual_hp is not None and rival_hp is not None and actual_hp < rival_hp:
+        edge = f"Don't claim a horsepower advantage—the {rival} reference is stronger at {int(rival_hp)} hp vs {int(actual_hp)} hp."
 
     return {
         "name": rival,
-        "data_available": True,
+        "data_available": bool(rival_data or lines),
+        "year": year,
         "engine": rival_data.get("engine"),
-        "hp": int(rhp) if rhp is not None and rhp.is_integer() else rhp,
-        "torque": int(rtq) if rtq is not None and rtq.is_integer() else rtq,
-        "max_towing": int(rtow) if rtow is not None and rtow.is_integer() else rtow,
-        "source": rival_data.get("source"),
-        "comparison": lines or [f"Compare the verified {rival} equipment against this vehicle based on the customer's priorities."],
+        "hp": int(rival_hp) if rival_hp is not None else None,
+        "torque": int(rival_tq) if rival_tq is not None else None,
+        "transmission": rival_data.get("transmission"),
+        "drivetrain": rival_data.get("drivetrain"),
+        "max_towing": rival_data.get("towing"),
+        "feature_summary": rival_data.get("feature_summary"),
+        "comparison": lines or [f"{rival} is shown here as a {year or 'model-year'} model-level reference; exact trim/package equipment is not being assumed."],
+        "angle": angle,
         "edge": edge,
-        "angle": _competitive_angle("jeep", "grand cherokee", rival),
+        "source": rival_data.get("source", "CarDex model-level reference"),
     }
 
 
-def _competitive_angle(make: str, model: str, rival: str) -> str:
-    r = rival.lower()
-    if "grand cherokee" in model:
-        if r.startswith("ford explorer"): return "Explorer has a power advantage in the base 2.3L, so don't claim otherwise. Sell the Grand Cherokee on the customer's desired mix of Jeep capability, design, ride and equipment."
-        if r.startswith("toyota"): return "Highlander has strong efficiency/family positioning. Ask whether the customer wants that or the Grand Cherokee's Jeep capability character and available 4x4-oriented positioning."
-        if r.startswith("honda"): return "Pilot is a strong family-focused V6 competitor. Find out whether the customer values its family packaging or the Grand Cherokee's Jeep character and capability."
-        if r.startswith("chevrolet"): return "Traverse has a power/cargo-focused value story. Win by matching the customer's needs to this Grand Cherokee's actual equipment, size and capability."
-    return "Ask what the customer likes about this competitor and compare those exact priorities side by side."
+def build_sales_brain(vehicle: Dict[str, Any], nhtsa: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    nhtsa = nhtsa or {}
+    year, make, model = _key(vehicle)
+    profile = _model_profile(year, make, model)
+    fallback = resolve_fallbacks(vehicle, nhtsa)
 
+    # Feed model-year ordinary specs back into the report object so the
+    # existing app.py UI can display them without any app.py change.
+    for field, value in {
+        "engine": profile.get("engine"),
+        "transmission": profile.get("transmission"),
+        "drivetrain": profile.get("drivetrain"),
+        "body_style": profile.get("body_style"),
+        "towing_capacity": profile.get("towing"),
+        "flat_tow": profile.get("flat_tow"),
+    }.items():
+        if value and not vehicle.get(field):
+            vehicle[field] = value
 
-def build_sales_brain(vehicle: Dict[str, Any], nhtsa: Dict[str, Any] | None = None) -> Dict[str, Any]:
-    nhtsa = nhtsa or {}; fallback = resolve_fallbacks(vehicle, nhtsa)
-    make = _clean(vehicle.get("make")); model = _clean(vehicle.get("model"))
+    if profile.get("hp") and not vehicle.get("engine_hp") and not nhtsa.get("engine_hp"):
+        vehicle["engine_hp"] = profile["hp"]
+    if profile.get("torque") and not vehicle.get("torque"):
+        vehicle["torque"] = f"{profile['torque']} lb-ft"
+
+    engine = vehicle.get("engine") or nhtsa.get("engine") or profile.get("engine")
+    hp = nhtsa.get("engine_hp") or vehicle.get("engine_hp") or profile.get("hp")
+    torque = vehicle.get("torque") or (f"{profile['torque']} lb-ft" if profile.get("torque") else None)
+    transmission = vehicle.get("transmission") or nhtsa.get("transmission") or profile.get("transmission")
+    drivetrain = vehicle.get("drivetrain") or nhtsa.get("drivetrain") or profile.get("drivetrain")
+    body = vehicle.get("body_style") or nhtsa.get("body_style") or profile.get("body_style")
+    towing = vehicle.get("towing_capacity") or profile.get("towing")
+    flat_tow = vehicle.get("flat_tow") or profile.get("flat_tow")
+
     title = " ".join(str(x) for x in [vehicle.get("year"), vehicle.get("make"), vehicle.get("model"), vehicle.get("trim")] if x)
+
+    # Specific, sales-floor useful points — not generic motivational filler.
+    points: List[str] = []
+    if engine:
+        points.append(f"Powertrain: {engine}" + (f" — {hp} hp / {torque}." if hp and torque else "."))
+    if transmission:
+        points.append(f"Transmission: {transmission}.")
+    if drivetrain:
+        points.append(f"Drivetrain: {drivetrain}.")
+    if towing:
+        points.append(f"Towing reference: {towing}.")
+    if profile.get("feature_summary"):
+        points.append(profile["feature_summary"])
+
+    if "grand cherokee" in model:
+        points += [
+            "If the customer is cross-shopping a 3-row SUV, first find out whether they actually need the third row; the Grand Cherokee is a 5-passenger SUV.",
+            "For a customer focused on winter driving or recreation, verify the actual 4x4 system on this vehicle before selling its capability.",
+            "Use the actual trim/package equipment on this VIN for luxury, technology, comfort and convenience claims—do not assume an option because another Grand Cherokee has it.",
+        ]
+    elif "explorer" in model:
+        points += [
+            "Lead with the Explorer's 3-row layout when passenger/cargo flexibility is the customer's priority.",
+            "Verify whether this specific Explorer has RWD or 4WD before making a capability claim.",
+        ]
+    elif "4runner" in model:
+        points += [
+            "Lead with body-on-frame construction and available 4WD/low-range capability when the customer wants traditional off-road capability.",
+            "Use the actual trim to determine which off-road hardware is present.",
+        ]
+    elif "pilot" in model or "highlander" in model or "traverse" in model:
+        points += [
+            "Lead with the 3-row/family packaging when that matches the customer's use.",
+            "Verify the actual AWD system and trim equipment before promising specific capability or convenience features.",
+        ]
+
+    if not points:
+        points = [
+            f"Model-year reference: {title or 'vehicle'}.",
+            "Use the verified listing equipment and the customer's priorities to build the presentation.",
+        ]
+
     competitors = competitor_list(vehicle)
-    engine = vehicle.get("engine") or nhtsa.get("engine") or fallback.get("engine")
-    hp = nhtsa.get("engine_hp") or fallback.get("engine_hp")
-    torque_raw = vehicle.get("torque") or fallback.get("torque")
-    try: torque_num = int(str(torque_raw).split()[0]) if torque_raw else None
-    except ValueError: torque_num = None
-    drive = vehicle.get("drivetrain") or nhtsa.get("drivetrain")
-
-    points = []
-    if engine: points.append(f"Powertrain: {engine}.")
-    if hp: points.append(f"Horsepower: {hp} hp.")
-    if torque_raw: points.append(f"Torque: {torque_raw}.")
-    if drive: points.append(f"Drivetrain: {drive}.")
-    if _clean(vehicle.get("condition")) == "new": points.append("New vehicle — lead with factory-new condition and applicable factory warranty coverage.")
-    if make == "jeep": points.append("Jeep identity and capability are strong talking points when they match the customer's actual use.")
-    if "grand cherokee" in model: points += [
-        "Grand Cherokee is the middle-ground choice for customers who want SUV comfort with a stronger capability-focused identity.",
-        "Use the customer's lifestyle to sell it: winter driving, road trips, family use, recreation and available 4x4 capability.",
-        "Don't rely on the badge alone — demonstrate the actual equipment on this VIN.",
-    ]
-    elif "wrangler" in model: points.append("Wrangler is best sold through lifestyle and capability demonstrations, not a wall of specifications.")
-    elif make == "ram": points.append("Connect ride quality, interior comfort and truck capability directly to the customer's work and towing needs.")
-    points += [
-        "If a customer mentions a competitor, ask what they like about it before responding.",
-        "Use exact VIN/listing equipment for feature claims; use model-level data only as a clearly labeled reference.",
-    ]
-
-    objections = [
-        "Price — ask what they are comparing and whether the concern is payment, total price or equipment/value.",
-        "Fuel economy — acknowledge it, then connect fuel use to the customer's actual driving and capability needs.",
-        "Competitor shopping — compare the specific priorities instead of attacking the other brand.",
-        "Towing — max ratings vary by configuration; VERIFY the exact vehicle before quoting a number.",
-        "Flat-tow — VERIFY the exact year, drivetrain and owner's-manual requirements before promising it.",
-        "Feature questions — if the VIN/listing does not prove the feature, tell the customer you will verify it rather than guessing.",
-    ]
-
-    vehicle_data = None
-    key = _model_key(vehicle)
-    if key in COMPETITIVE_DATA:
-        vehicle_data = COMPETITIVE_DATA[key].get("Jeep Grand Cherokee")
-    competitive = [_comparison(vehicle_data or {}, _competitive_numbers(vehicle.get("year"), make, model, rival), rival) for rival in competitors]
+    competitive = [_comparison(vehicle, rival) for rival in competitors]
 
     questions = []
     if "grand cherokee" in model:
         questions = [
-            "Are you comparing this Grand Cherokee to an Explorer, Highlander, Pilot, Traverse, or something else?",
-            "Do you need 4x4/winter capability, or is this mainly a daily driver?",
-            "Is the V6 power and towing capability important for what you plan to pull?",
-            "Which feature or package on this specific Grand Cherokee caught your eye?",
+            "Are you comparing this to an Explorer, Highlander, Pilot, 4Runner, or something else?",
+            "Do you need three rows, or is a 5-passenger SUV the right size?",
+            "Is winter traction/4x4 capability important enough that we should verify the system on this specific Grand Cherokee?",
+            "Are you more focused on comfort and technology, towing/recreation, or the payment?",
         ]
-    elif "wrangler" in model:
+    elif "ram" in make:
         questions = [
-            "Are you planning to take it off-road, or do you mainly want the Wrangler look and open-air experience?",
-            "Do you need a removable top/doors or a specific 4x4 setup?",
-            "Are you comparing it to a Bronco or 4Runner?",
-            "What are you planning to carry or tow with it?",
-        ]
-    elif "gladiator" in model:
-        questions = [
-            "How important is the pickup bed versus the Wrangler-style open-air capability?",
-            "What are you planning to tow or haul?",
-            "Are you comparing it to a Ranger, Tacoma, or Colorado?",
-            "Do you need the truck for work, recreation, or both?",
-        ]
-    elif make == "ram":
-        questions = [
-            "Are you comparing this Ram to an F-Series, Silverado, Sierra, or another truck?",
             "What are you towing or hauling, and how often?",
-            "Do you need this truck primarily for work, daily driving, or both?",
-            "Which matters more here: payload/towing, comfort, fuel economy, or price?",
+            "Which matters more: payload/towing, fuel economy, interior comfort, or payment?",
+            "Are you comparing this to an F-150, Silverado, Sierra, or Tundra?",
+            "Is there a specific truck feature you saw elsewhere that you don't want to give up?",
         ]
-    elif "explorer" in model or "highlander" in model or "pilot" in model or "traverse" in model:
+    elif "wrangler" in model or "4runner" in model:
         questions = [
-            "What do you like most about this SUV compared with the Grand Cherokee or the other SUVs you've driven?",
-            "How many passengers do you normally carry?",
-            "Is cargo space, fuel economy, power, AWD/4WD capability, or technology most important?",
-            "Are you looking for something primarily for family use, commuting, or road trips?",
+            "How much of your driving is pavement versus trails, snow, or rough roads?",
+            "Do you actually need low-range/off-road hardware, or mainly winter traction?",
+            "Are you comparing this to a Bronco, 4Runner, or another SUV?",
+            "What capability feature would make you choose this one?",
         ]
     else:
         questions = [
-            f"What made you look at this {vehicle.get('make') or ''} {vehicle.get('model') or 'vehicle'} specifically?",
-            "What are you comparing it against?",
-            "Which matters most: price, performance, fuel economy, space, technology, or capability?",
-            "Is there one feature you absolutely do not want to give up?",
+            f"Are you comparing this {title or 'vehicle'} to another model?",
+            "Is your biggest priority power, space, fuel economy, capability, technology, or payment?",
+            "What feature from the other vehicle do you absolutely not want to give up?",
+            "How will you use the vehicle most often?",
         ]
 
-    demo = []
-    if drive:
-        demo.append(f"Show the customer the actual {drive} system/controls on this vehicle and explain how they use them.")
-    if "grand cherokee" in model:
-        demo.append("Demonstrate the screen, drive modes, seating position, and comfort points that matter to this customer.")
-    elif "wrangler" in model:
-        demo.append("Demonstrate the actual 4x4 controls and open-air/removable-top features present on this vehicle.")
-    elif "gladiator" in model or make == "ram":
-        demo.append("Have the customer test the seating position, storage, bed/utility areas, and the controls they will use most.")
-    else:
-        demo.append("Demonstrate the two or three verified features that directly match the customer's stated priorities.")
-    demo.append("Tie each demonstrated feature back to something the customer told you they wanted.")
-    pitch = f"This is the {title or 'vehicle'}"
-    if engine: pitch += f", powered by a {engine}"
-    if hp: pitch += f" with {hp} horsepower"
-    pitch += ". "
-    if competitors: pitch += f"If you're also looking at something like the {competitors[0]}, I can show you exactly where the two differ instead of giving you a generic sales pitch. "
-    pitch += "What matters most to you in the vehicle?"
+    demo = [
+        "Demonstrate the exact feature that matches the customer's #1 priority.",
+        "If drivetrain/capability matters, show the actual controls and system present on this vehicle.",
+        "If space matters, have the customer test the seats and cargo area themselves.",
+        "Use the actual screen, driver-assistance controls and comfort equipment on this VIN—not equipment from another trim.",
+    ]
+
+    pitch = f"This {title or 'vehicle'} has"
+    descriptors = []
+    if engine: descriptors.append(engine)
+    if hp: descriptors.append(f"{hp} horsepower")
+    if transmission: descriptors.append(transmission)
+    if drivetrain: descriptors.append(drivetrain)
+    pitch += " " + ", ".join(descriptors) + ". "
+    pitch += "The big thing I'd want to know is what you're comparing it against and what you care about most, because I can show you the actual differences without assuming equipment this vehicle doesn't have."
+
+    objections = [
+        "Feature/add-on questions: verify the actual VIN/listing before claiming a package, seat feature, sunroof, audio system, or driver-assistance option.",
+        "Towing: use the model-year reference only as a maximum/typical rating and verify the exact engine/equipment before quoting a hard number.",
+        "Flat-towing: use the model-year reference only to identify whether that type of configuration may support it; verify the exact drivetrain and owner's-manual procedure.",
+        "Competitor shopping: compare model-year facts directly instead of pretending CarDex found a competitor VIN.",
+    ]
 
     return {
         "points": points,
@@ -286,5 +471,14 @@ def build_sales_brain(vehicle: Dict[str, Any], nhtsa: Dict[str, Any] | None = No
         "questions": questions,
         "demo": demo,
         "fallback": fallback,
-        "resolved": {"engine": engine, "engine_hp": hp, "torque": torque_raw, "body_style": vehicle.get("body_style") or nhtsa.get("body_style") or fallback.get("body_style")},
+        "resolved": {
+            "engine": engine,
+            "engine_hp": hp,
+            "torque": torque,
+            "transmission": transmission,
+            "drivetrain": drivetrain,
+            "body_style": body,
+            "towing_capacity": towing,
+            "flat_tow": flat_tow,
+        },
     }
