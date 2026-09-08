@@ -1,6 +1,6 @@
 """
-CarDex V2.4.1 — vehicle list + clickable sales report.
-Garage-door boot loader, neon credit, ambient bay animation.
+CarDex V2.5.0 — vehicle list + clickable sales report.
+Garage-door boot loader with neon pink sign, scroll-reveal report sections.
 Replace app.py with this file on GitHub.
 """
 
@@ -14,7 +14,14 @@ from scraper import InventoryEngine, list_adapters
 from store import InventoryStore
 from sales_brain import build_sales_brain
 
-__version__ = "2.4.1-garage-boot"
+__version__ = "2.5.0-neon-garage"
+
+# Edit this if your Lithia Missoula rooftop URL is different.
+LITHIA_MISSOULA_URL = os.environ.get(
+    "CARDEX_LITHIA_URL",
+    "https://www.lithiachryslerjeepdodgeofmissoula.com/new-inventory/index.htm",
+)
+LITHIA_MISSOULA_NAME = "Lithia Missoula"
 
 app = Flask(__name__)
 app.config["JSON_SORT_KEYS"] = False
@@ -28,15 +35,14 @@ INDEX_HTML = r"""
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>CarDex — Vehicle Sales Intelligence</title>
+  <title>CarDex — The Ultimate Car DataBase</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600;700&family=Monoton&display=swap" rel="stylesheet">
   <style>
     :root {
       --bg: #05030a;
       --panel: rgba(15, 9, 24, 0.66);
-      --panel-solid: #0e0817;
       --ink: #ede8f7;
       --muted: #8f83ab;
       --dim: #6a5f85;
@@ -46,7 +52,6 @@ INDEX_HTML = r"""
       --violet-deep: #6d28d9;
       --magenta: #e879f9;
       --neon: #ff4fd8;
-      --cyan: #67e8f9;
       --green: #4ade80;
       --amber: #fbbf24;
       --red: #fb7185;
@@ -60,27 +65,20 @@ INDEX_HTML = r"""
       min-height: 100vh; overflow-x: hidden;
       -webkit-font-smoothing: antialiased;
     }
+    body.booting { overflow: hidden; }
 
     /* ================= GARAGE DOOR BOOT LOADER ================= */
     #garage {
       position: fixed; inset: 0; z-index: 999;
-      display: flex; flex-direction: column; justify-content: flex-end;
       background: #030207;
-      transition: opacity .6s ease .1s;
+      transition: opacity .7s ease .35s;
     }
     #garage.done { opacity: 0; pointer-events: none; }
-    .garage-glow {
-      position: absolute; left: 0; right: 0; bottom: 0; height: 0;
-      background: linear-gradient(180deg, transparent, rgba(168,85,247,.35));
-      transition: height .8s ease;
-      pointer-events: none;
-    }
-    #garage.open .garage-glow { height: 100%; }
     .garage-door {
       position: relative; width: 100%; height: 100%;
       display: flex; flex-direction: column;
       transform: translateY(0);
-      transition: transform 1.9s cubic-bezier(.65,0,.35,1);
+      transition: transform 2.4s cubic-bezier(.65,0,.35,1);
       will-change: transform;
     }
     #garage.open .garage-door { transform: translateY(-104%); }
@@ -97,32 +95,63 @@ INDEX_HTML = r"""
     .door-seal {
       height: 10px; flex: none;
       background: linear-gradient(180deg, #241733, #120a1e);
-      box-shadow: 0 2px 24px 4px rgba(232,121,249,.55);
-      border-top: 1px solid rgba(232,121,249,.5);
+      box-shadow: 0 2px 24px 4px rgba(255,79,216,.55);
+      border-top: 1px solid rgba(255,79,216,.6);
     }
-    .garage-label {
-      position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
-      font-family: var(--mono); font-size: .72rem; letter-spacing: .5em;
-      text-transform: uppercase; color: var(--muted); text-align: center;
-    }
-    .garage-label b {
-      display: block; font-size: 1.9rem; letter-spacing: -.02em; margin-bottom: .8rem;
-      background: linear-gradient(92deg, #f5d0fe, #a855f7 55%, #67e8f9);
-      -webkit-background-clip: text; background-clip: text; color: transparent;
-      font-family: Inter, sans-serif; font-weight: 900;
-    }
-    .garage-label .hint { animation: blink 1.6s ease-in-out infinite; color: var(--dim); }
 
-    /* ================= NEON "MADE BY ELIJAH" ================= */
+    /* ---- Neon sign on the door ---- */
+    .neon-sign {
+      position: absolute; top: 46%; left: 50%; transform: translate(-50%,-50%);
+      text-align: center; z-index: 3; padding: 2.2rem 3rem;
+      border: 2px solid rgba(255,79,216,.35); border-radius: 14px;
+      box-shadow: 0 0 26px rgba(255,79,216,.35), inset 0 0 34px rgba(255,79,216,.12);
+      animation: signOn 3.2s ease-in-out infinite;
+      max-width: 92vw;
+    }
+    .neon-sign .n-title {
+      font-family: Monoton, Inter, cursive; font-weight: 400;
+      font-size: clamp(2.6rem, 11vw, 6rem); line-height: 1; letter-spacing: .04em;
+      color: #ffe3f8;
+      text-shadow:
+        0 0 6px #fff0fb, 0 0 14px var(--neon), 0 0 32px var(--neon),
+        0 0 68px rgba(255,79,216,.85), 0 0 120px rgba(255,79,216,.55);
+      animation: neonFlicker 5s linear infinite;
+    }
+    .neon-sign .n-sub {
+      margin-top: .9rem; font-family: var(--mono); font-weight: 700;
+      font-size: clamp(.72rem, 2.6vw, 1.05rem); letter-spacing: .34em; text-transform: uppercase;
+      color: #ffd7f4;
+      text-shadow: 0 0 6px rgba(255,79,216,.9), 0 0 18px rgba(255,79,216,.7), 0 0 40px rgba(255,79,216,.4);
+    }
+    .neon-sign .n-credit {
+      position: absolute; right: -8px; bottom: -2.6rem;
+      font-family: var(--mono); font-weight: 700;
+      font-size: clamp(.6rem, 2vw, .8rem); letter-spacing: .28em; text-transform: uppercase;
+      color: #ffc9ef; white-space: nowrap;
+      text-shadow: 0 0 6px rgba(255,79,216,.9), 0 0 20px rgba(255,79,216,.6);
+      animation: neonFlicker 6.4s linear infinite .4s;
+    }
+    @media (max-width: 720px) {
+      .neon-sign { padding: 1.6rem 1.4rem; }
+      .neon-sign .n-credit { right: 50%; transform: translateX(50%); }
+    }
+    @keyframes signOn { 0%,100% { box-shadow: 0 0 26px rgba(255,79,216,.35), inset 0 0 34px rgba(255,79,216,.12); }
+                        50% { box-shadow: 0 0 44px rgba(255,79,216,.55), inset 0 0 46px rgba(255,79,216,.2); } }
+    @keyframes neonFlicker {
+      0%, 6.5%, 8%, 100% { opacity: 1; }
+      7% { opacity: .5; }
+      52% { opacity: 1; }
+      52.6% { opacity: .65; }
+      53.2% { opacity: 1; }
+    }
+
+    /* small persistent neon credit in the app */
     .neon-credit {
       position: fixed; right: 18px; bottom: 14px; z-index: 80;
       font-family: var(--mono); font-size: .68rem; font-weight: 700;
       letter-spacing: .22em; text-transform: uppercase;
       color: #ffd7f4; pointer-events: none; user-select: none;
-      text-shadow:
-        0 0 6px rgba(255,79,216,.9),
-        0 0 18px rgba(255,79,216,.65),
-        0 0 42px rgba(255,79,216,.4);
+      text-shadow: 0 0 6px rgba(255,79,216,.9), 0 0 18px rgba(255,79,216,.65), 0 0 42px rgba(255,79,216,.4);
       animation: neonFlicker 4.5s linear infinite;
     }
     .neon-credit::before {
@@ -130,15 +159,8 @@ INDEX_HTML = r"""
       border: 1px solid rgba(255,79,216,.28); border-radius: 4px;
       box-shadow: 0 0 18px rgba(255,79,216,.22), inset 0 0 14px rgba(255,79,216,.1);
     }
-    @keyframes neonFlicker {
-      0%, 6.5%, 8%, 100% { opacity: 1; }
-      7% { opacity: .55; }
-      52% { opacity: 1; }
-      52.6% { opacity: .7; }
-      53.2% { opacity: 1; }
-    }
 
-    /* ---------- Ambience: aurora + garage grid + scanlines ---------- */
+    /* ---------- Ambience ---------- */
     .amb { position: fixed; inset: 0; pointer-events: none; z-index: -1; }
     .amb-aurora {
       position: absolute; inset: -30%;
@@ -148,12 +170,11 @@ INDEX_HTML = r"""
         radial-gradient(46% 30% at 62% 92%, rgba(109,40,217,.26), transparent 70%);
       filter: blur(6px);
       animation: aurora 22s ease-in-out infinite alternate;
-      will-change: transform;
     }
     @keyframes aurora {
-      0%   { transform: translate3d(-2%, 0, 0) scale(1); }
-      50%  { transform: translate3d(1%, 1.5%, 0) scale(1.05); }
-      100% { transform: translate3d(2%, -1%, 0) scale(1.08); }
+      0% { transform: translate3d(-2%,0,0) scale(1); }
+      50% { transform: translate3d(1%,1.5%,0) scale(1.05); }
+      100% { transform: translate3d(2%,-1%,0) scale(1.08); }
     }
     .amb-grid {
       position: absolute; inset: 0;
@@ -176,26 +197,7 @@ INDEX_HTML = r"""
     }
     @keyframes sweepDown { from { transform: translateY(0); } to { transform: translateY(140vh); } }
 
-    /* ================= SIGNATURE BAY RADAR =================
-       One clean animated element: a slow light pulse that travels
-       around the console card border, like a shop bay sensor loop. */
-    @property --bayAngle { syntax: "<angle>"; initial-value: 0deg; inherits: false; }
-    .bay-frame { position: relative; border-radius: 5px; padding: 1px; margin-bottom: 1.1rem; }
-    .bay-frame::before {
-      content: ""; position: absolute; inset: 0; border-radius: 5px; padding: 1px;
-      background: conic-gradient(from var(--bayAngle),
-        transparent 0deg, transparent 300deg,
-        rgba(232,121,249,.05) 320deg, rgba(232,121,249,.85) 348deg,
-        rgba(103,232,249,.9) 356deg, transparent 360deg);
-      -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-      -webkit-mask-composite: xor; mask-composite: exclude;
-      animation: bayOrbit 7s linear infinite;
-      pointer-events: none;
-    }
-    @keyframes bayOrbit { to { --bayAngle: 360deg; } }
-    .bay-frame .card { margin-bottom: 0; animation: none; }
-
-    /* ---------- Header / wordmark ---------- */
+    /* ---------- Header ---------- */
     header {
       position: sticky; top: 0; z-index: 40;
       display: flex; align-items: center; gap: 1rem;
@@ -207,21 +209,15 @@ INDEX_HTML = r"""
     header::after {
       content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 1px;
       background: linear-gradient(90deg, transparent, var(--violet), var(--magenta), transparent);
-      opacity: .65;
-      animation: railShift 7s linear infinite;
-      background-size: 200% 100%;
+      opacity: .65; background-size: 200% 100%; animation: railShift 7s linear infinite;
     }
     @keyframes railShift { from { background-position: 0% 0; } to { background-position: 200% 0; } }
-
     .mark { display: flex; align-items: baseline; gap: .1rem; }
     .mark .slash {
       display: inline-block; width: 3px; height: 22px; margin-right: .55rem;
       background: linear-gradient(180deg, var(--magenta), var(--violet-deep));
-      transform: skewX(-18deg); border-radius: 2px;
-      box-shadow: 0 0 14px rgba(217,70,239,.7);
-      animation: markPulse 3.6s ease-in-out infinite;
+      transform: skewX(-18deg); border-radius: 2px; box-shadow: 0 0 14px rgba(217,70,239,.7);
     }
-    @keyframes markPulse { 0%,100% { opacity: .8; } 50% { opacity: 1; box-shadow: 0 0 22px rgba(232,121,249,.9); } }
     .mark .car { font-size: 1.28rem; font-weight: 900; letter-spacing: -.045em; color: #fff; }
     .mark .dex {
       font-size: 1.28rem; font-weight: 900; letter-spacing: -.045em;
@@ -235,7 +231,6 @@ INDEX_HTML = r"""
     .badge {
       font-family: var(--mono); background: rgba(168,85,247,.12); border: 1px solid var(--line-hot);
       color: #e9d5ff; font-size: .63rem; padding: .24rem .55rem; border-radius: 4px; font-weight: 700;
-      letter-spacing: .08em;
     }
     .spacer { flex: 1; }
     .live { display: flex; align-items: center; gap: .45rem; font-family: var(--mono); font-size: .62rem; color: var(--muted); letter-spacing: .18em; text-transform: uppercase; }
@@ -244,17 +239,12 @@ INDEX_HTML = r"""
 
     main { max-width: 1180px; margin: 0 auto; padding: 1.6rem 1.25rem 4rem; }
 
-    /* ---------- Panels with corner brackets ---------- */
     .card {
-      position: relative;
-      background: var(--panel);
-      border: 1px solid var(--line);
-      border-radius: 4px;
-      padding: 1.25rem 1.4rem; margin-bottom: 1.1rem;
+      position: relative; background: var(--panel); border: 1px solid var(--line);
+      border-radius: 4px; padding: 1.25rem 1.4rem; margin-bottom: 1.1rem;
       backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
       box-shadow: 0 22px 60px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.035);
       transition: border-color .25s ease, box-shadow .25s ease, transform .25s cubic-bezier(.2,.7,.3,1);
-      animation: rise .5s cubic-bezier(.2,.7,.3,1) both;
     }
     .card::before, .card::after {
       content: ""; position: absolute; width: 12px; height: 12px; pointer-events: none;
@@ -263,7 +253,6 @@ INDEX_HTML = r"""
     .card::before { top: -1px; left: -1px; border-top: 1px solid; border-left: 1px solid; }
     .card::after { bottom: -1px; right: -1px; border-bottom: 1px solid; border-right: 1px solid; }
     .card:hover { border-color: rgba(178,122,255,.34); box-shadow: 0 28px 70px rgba(76,29,149,.4); transform: translateY(-2px); }
-    @keyframes rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
 
     h2 {
       font-family: var(--mono); font-size: .63rem; color: var(--muted); font-weight: 700;
@@ -272,34 +261,30 @@ INDEX_HTML = r"""
     }
     h2::after { content: ""; flex: 1; height: 1px; background: linear-gradient(90deg, var(--line-hot), transparent); }
 
-    /* ---------- Instrument gauges ---------- */
     .gauges { display: grid; grid-template-columns: repeat(4, 1fr); gap: .7rem; margin-bottom: 1.1rem; }
     @media (max-width: 760px) { .gauges { grid-template-columns: repeat(2, 1fr); } }
     .gauge {
       position: relative; overflow: hidden;
       background: linear-gradient(180deg, rgba(21,13,33,.8), rgba(10,6,17,.8));
       border: 1px solid var(--line); border-radius: 4px; padding: .85rem .95rem .95rem;
-      animation: rise .5s cubic-bezier(.2,.7,.3,1) both;
       transition: transform .22s ease, border-color .22s ease;
     }
     .gauge:hover { transform: translateY(-3px); border-color: var(--line-hot); }
     .gauge .k { font-family: var(--mono); font-size: .58rem; text-transform: uppercase; letter-spacing: .22em; color: var(--dim); }
-    .gauge .v { font-family: var(--mono); font-size: 1.55rem; font-weight: 700; margin-top: .3rem; letter-spacing: -.02em; color: #fff; }
+    .gauge .v { font-family: var(--mono); font-size: 1.55rem; font-weight: 700; margin-top: .3rem; color: #fff; }
     .gauge .v.hot { background: linear-gradient(92deg, #f5d0fe, #a855f7); -webkit-background-clip: text; background-clip: text; color: transparent; }
     .ticks { display: flex; gap: 3px; margin-top: .6rem; }
     .ticks i { display: block; flex: 1; height: 4px; border-radius: 1px; background: rgba(168,85,247,.16); }
     .ticks i.on { background: linear-gradient(90deg, var(--violet), var(--magenta)); box-shadow: 0 0 8px rgba(168,85,247,.55); }
 
-    /* ---------- Controls ---------- */
     .search-row { display: flex; gap: .6rem; }
     input[type="text"] {
       flex: 1; background: rgba(5,3,10,.9); border: 1px solid var(--line); border-radius: 4px;
-      padding: .9rem 1rem; color: var(--ink); font-size: .98rem; outline: none;
-      font-family: var(--mono); letter-spacing: .01em;
+      padding: .9rem 1rem; color: var(--ink); font-size: .98rem; outline: none; font-family: var(--mono);
       transition: border-color .2s ease, box-shadow .2s ease;
     }
     input[type="text"]::placeholder { color: #5d5378; }
-    input[type="text"]:focus { border-color: var(--violet); box-shadow: 0 0 0 3px rgba(168,85,247,.16), inset 0 0 24px rgba(168,85,247,.07); }
+    input[type="text"]:focus { border-color: var(--violet); box-shadow: 0 0 0 3px rgba(168,85,247,.16); }
 
     button {
       position: relative; overflow: hidden;
@@ -311,13 +296,9 @@ INDEX_HTML = r"""
       box-shadow: 0 8px 24px rgba(109,40,217,.4);
     }
     button:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 14px 34px rgba(192,38,211,.42); filter: brightness(1.08); }
-    button:active:not(:disabled) { transform: translateY(0); }
-    button:focus-visible { outline: 2px solid var(--magenta); outline-offset: 2px; }
     button:disabled { opacity: .45; cursor: not-allowed; }
     button.secondary { background: rgba(168,85,247,.08); border: 1px solid var(--line-hot); color: #e9d5ff; box-shadow: none; }
-    button.secondary:hover:not(:disabled) { background: rgba(168,85,247,.18); }
     button.ghost { background: transparent; border: 1px solid var(--line); color: var(--muted); box-shadow: none; }
-    button.ghost:hover { color: var(--ink); border-color: var(--line-hot); }
     button.busy::after {
       content: ""; position: absolute; inset: 0;
       background: linear-gradient(90deg, transparent, rgba(255,255,255,.25), transparent);
@@ -325,11 +306,10 @@ INDEX_HTML = r"""
     }
     .actions { display: flex; gap: .55rem; margin-top: .85rem; flex-wrap: wrap; }
 
-    .status { font-family: var(--mono); font-size: .74rem; color: var(--muted); margin-top: .85rem; min-height: 1.3em; letter-spacing: .04em; }
+    .status { font-family: var(--mono); font-size: .74rem; color: var(--muted); margin-top: .85rem; min-height: 1.3em; }
     .status.ok { color: var(--green); }
     .status.err { color: var(--red); }
 
-    /* ---------- Vehicle rows: instrument strips ---------- */
     .vehicle {
       position: relative; display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;
       background: linear-gradient(90deg, rgba(14,8,23,.85), rgba(9,5,15,.7));
@@ -338,11 +318,10 @@ INDEX_HTML = r"""
       transition: transform .2s cubic-bezier(.2,.7,.3,1), border-color .2s ease, background .2s ease, box-shadow .2s ease;
       animation: itemIn .4s cubic-bezier(.2,.7,.3,1) both;
     }
-    .vehicle:hover { transform: translateX(6px); border-left-color: var(--magenta); border-color: var(--line-hot); background: linear-gradient(90deg, rgba(28,16,44,.9), rgba(12,7,20,.8)); box-shadow: 0 14px 34px rgba(76,29,149,.35); }
-    .vehicle:focus-visible { outline: 2px solid var(--magenta); outline-offset: 2px; }
+    .vehicle:hover { transform: translateX(6px); border-left-color: var(--magenta); border-color: var(--line-hot); box-shadow: 0 14px 34px rgba(76,29,149,.35); }
     @keyframes itemIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
     .v-main { flex: 1; min-width: 210px; }
-    .vehicle .title { font-size: 1.02rem; font-weight: 700; letter-spacing: -.015em; margin-bottom: .4rem; }
+    .vehicle .title { font-size: 1.02rem; font-weight: 700; margin-bottom: .4rem; }
     .vehicle .meta { display: flex; flex-wrap: wrap; gap: .35rem; }
     .tagchip {
       font-family: var(--mono); font-size: .62rem; letter-spacing: .1em; text-transform: uppercase;
@@ -350,12 +329,11 @@ INDEX_HTML = r"""
       border: 1px solid var(--line); border-radius: 3px; padding: .18rem .45rem;
     }
     .vehicle .price {
-      font-family: var(--mono); font-size: 1.22rem; font-weight: 700; letter-spacing: -.02em;
+      font-family: var(--mono); font-size: 1.22rem; font-weight: 700;
       background: linear-gradient(92deg, #f5d0fe, #c084fc); -webkit-background-clip: text; background-clip: text; color: transparent;
       text-align: right; min-width: 120px;
     }
-
-    .empty { color: var(--muted); text-align: center; padding: 1.9rem 0; font-size: .9rem; font-family: var(--mono); letter-spacing: .06em; }
+    .empty { color: var(--muted); text-align: center; padding: 1.9rem 0; font-size: .9rem; font-family: var(--mono); }
 
     /* ---------- Report ---------- */
     #report-view { display: none; }
@@ -368,19 +346,13 @@ INDEX_HTML = r"""
       font-family: var(--mono); font-size: .68rem; letter-spacing: .16em; text-transform: uppercase;
     }
     .report-photo img { width: 100%; height: 100%; object-fit: cover; transition: transform .5s ease, filter .35s ease; }
-    .report-photo:hover img { transform: scale(1.06); filter: saturate(1.15) contrast(1.04); }
-    .report-photo::after {
-      content: ""; position: absolute; inset: 0; pointer-events: none;
-      background: repeating-linear-gradient(180deg, rgba(0,0,0,.16) 0 1px, transparent 1px 3px);
-      opacity: .55;
-    }
-    .report-title { font-size: 1.5rem; font-weight: 800; line-height: 1.2; letter-spacing: -.03em; }
+    .report-photo:hover img { transform: scale(1.06); filter: saturate(1.15); }
+    .report-title { font-size: 1.5rem; font-weight: 800; line-height: 1.2; }
     .report-price {
-      font-family: var(--mono); font-size: 2rem; font-weight: 700; margin: .35rem 0 .2rem; letter-spacing: -.03em;
+      font-family: var(--mono); font-size: 2rem; font-weight: 700; margin: .35rem 0 .2rem;
       background: linear-gradient(92deg, #f5d0fe, #a855f7); -webkit-background-clip: text; background-clip: text; color: transparent;
     }
-    .report-sub { color: var(--muted); font-size: .88rem; font-family: var(--mono); letter-spacing: .06em; }
-
+    .report-sub { color: var(--muted); font-size: .88rem; font-family: var(--mono); }
     .chips { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .8rem; }
     .chip {
       font-family: var(--mono); font-size: .64rem; letter-spacing: .12em; text-transform: uppercase; font-weight: 600;
@@ -388,7 +360,6 @@ INDEX_HTML = r"""
     }
     .chip.ok { border-color: rgba(74,222,128,.42); color: var(--green); background: rgba(74,222,128,.08); }
     .chip.warn { border-color: rgba(251,191,36,.42); color: var(--amber); background: rgba(251,191,36,.08); }
-
     .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: .55rem; }
     @media (max-width: 640px) { .grid2 { grid-template-columns: 1fr; } .report-photo { width: 100%; } .vehicle .price { text-align: left; } }
     .spec {
@@ -398,8 +369,6 @@ INDEX_HTML = r"""
     .spec:hover { transform: translateY(-2px); border-color: var(--line-hot); background: rgba(20,12,32,.85); }
     .spec .label { font-family: var(--mono); font-size: .58rem; color: var(--dim); text-transform: uppercase; letter-spacing: .2em; }
     .spec .value { font-size: .98rem; font-weight: 600; margin-top: .3rem; word-break: break-word; }
-    .spec .value.verify { color: var(--amber); font-weight: 700; }
-
     .section-title {
       font-family: var(--mono); font-size: .63rem; color: var(--muted); font-weight: 700;
       text-transform: uppercase; letter-spacing: .26em; margin: 1.4rem 0 .65rem;
@@ -407,7 +376,6 @@ INDEX_HTML = r"""
     }
     .section-title::before { content: "//"; color: var(--violet); }
     .section-title::after { content: ""; flex: 1; height: 1px; background: linear-gradient(90deg, var(--line-hot), transparent); }
-
     .bullet {
       background: rgba(5,3,10,.7); border: 1px solid var(--line); border-left: 2px solid var(--violet);
       border-radius: 0 3px 3px 0; padding: .72rem .95rem; margin-bottom: .45rem;
@@ -421,8 +389,32 @@ INDEX_HTML = r"""
       border: 1px solid var(--line-hot); border-radius: 3px; padding: 1rem 1.1rem;
       font-size: .98rem; line-height: 1.6;
     }
-    a.link { color: #e9d5ff; font-size: .84rem; font-family: var(--mono); letter-spacing: .08em; text-decoration: none; border-bottom: 1px solid rgba(233,213,255,.35); }
+    a.link { color: #e9d5ff; font-size: .84rem; font-family: var(--mono); text-decoration: none; border-bottom: 1px solid rgba(233,213,255,.35); }
     a.link:hover { color: var(--magenta); }
+
+    /* ---------- SCROLL PERSONALITY ---------- */
+    .reveal {
+      opacity: 0; transform: translateY(34px) scale(.985);
+      filter: blur(6px);
+      transition: opacity .7s cubic-bezier(.2,.7,.3,1), transform .7s cubic-bezier(.2,.7,.3,1), filter .7s ease;
+    }
+    .reveal.in { opacity: 1; transform: none; filter: none; }
+    .reveal.from-left { transform: translateX(-46px); }
+    .reveal.from-right { transform: translateX(46px); }
+    .reveal.tilt { transform: perspective(900px) rotateX(9deg) translateY(40px); transform-origin: top center; }
+    .reveal.in.from-left, .reveal.in.from-right, .reveal.in.tilt { transform: none; }
+    .reveal-stagger > * {
+      opacity: 0; transform: translateY(20px);
+      transition: opacity .55s ease, transform .55s cubic-bezier(.2,.7,.3,1);
+    }
+    .reveal-stagger.in > * { opacity: 1; transform: none; }
+    .sec-glow { position: relative; }
+    .sec-glow::after {
+      content: ""; position: absolute; left: 0; right: 0; top: -1px; height: 1px;
+      background: linear-gradient(90deg, transparent, var(--neon), transparent);
+      opacity: 0; transition: opacity .8s ease;
+    }
+    .sec-glow.in::after { opacity: .8; }
 
     .loading-shimmer {
       background: linear-gradient(90deg, rgba(14,8,23,.7) 25%, rgba(46,26,72,.85) 37%, rgba(14,8,23,.7) 63%);
@@ -433,21 +425,23 @@ INDEX_HTML = r"""
 
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after { animation: none !important; transition: none !important; }
+      .reveal, .reveal-stagger > * { opacity: 1 !important; transform: none !important; filter: none !important; }
       #garage { display: none !important; }
     }
   </style>
 </head>
-<body>
+<body class="booting">
 
-  <!-- Garage door boot loader -->
-  <div id="garage" aria-hidden="true">
-    <div class="garage-glow"></div>
+  <!-- GARAGE DOOR BOOT -->
+  <div id="garage">
     <div class="garage-door">
-      <div class="garage-label">
-        <b>CarDex</b>
-        <span class="hint">Opening bay door…</span>
+      <div class="door-panel">
+        <div class="neon-sign">
+          <div class="n-title">CarDex</div>
+          <div class="n-sub">The Ultimate Car DataBase</div>
+          <div class="n-credit">Made By Elijah</div>
+        </div>
       </div>
-      <div class="door-panel"></div>
       <div class="door-panel"></div>
       <div class="door-panel"></div>
       <div class="door-panel"></div>
@@ -455,10 +449,8 @@ INDEX_HTML = r"""
     </div>
   </div>
 
-  <!-- Neon credit -->
   <div class="neon-credit">Made by Elijah</div>
 
-  <!-- Ambience -->
   <div class="amb">
     <div class="amb-aurora"></div>
     <div class="amb-grid"></div>
@@ -470,7 +462,7 @@ INDEX_HTML = r"""
     <div class="mark">
       <span class="slash"></span>
       <span class="car">Car</span><span class="dex">Dex</span>
-      <span class="tag">Midnight Performance Desk</span>
+      <span class="tag">The Ultimate Car DataBase</span>
     </div>
     <span class="badge">V{{ version }}</span>
     <div class="spacer"></div>
@@ -478,263 +470,393 @@ INDEX_HTML = r"""
   </header>
 
   <main>
-    <!-- Gauges -->
+    <!-- GAUGES -->
     <div class="gauges" id="gauges">
-      <div class="gauge" style="animation-delay:.05s">
-        <div class="k">Units</div><div class="v" id="g-units">—</div>
-        <div class="ticks" data-ticks></div>
-      </div>
-      <div class="gauge" style="animation-delay:.12s">
-        <div class="k">Avg price</div><div class="v hot" id="g-avg">—</div>
-        <div class="ticks" data-ticks></div>
-      </div>
-      <div class="gauge" style="animation-delay:.19s">
-        <div class="k">VIN verified</div><div class="v" id="g-vin">—</div>
-        <div class="ticks" data-ticks></div>
-      </div>
-      <div class="gauge" style="animation-delay:.26s">
-        <div class="k">Photographed</div><div class="v" id="g-photo">—</div>
-        <div class="ticks" data-ticks></div>
-      </div>
+      <div class="gauge"><div class="k">Units</div><div class="v hot" id="g-units">—</div><div class="ticks" id="t-units"></div></div>
+      <div class="gauge"><div class="k">Avg price</div><div class="v" id="g-avg">—</div><div class="ticks" id="t-avg"></div></div>
+      <div class="gauge"><div class="k">VIN verified</div><div class="v" id="g-vin">—</div><div class="ticks" id="t-vin"></div></div>
+      <div class="gauge"><div class="k">Photographed</div><div class="v" id="g-pic">—</div><div class="ticks" id="t-pic"></div></div>
     </div>
 
-    <!-- List view -->
+    <!-- LIST VIEW -->
     <div id="list-view">
-      <div class="bay-frame">
-        <div class="card">
-          <h2>Inventory Console</h2>
-          <div class="search-row">
-            <input type="text" id="q" placeholder="Search year / make / model / VIN / stock #…" />
-            <button id="btn-search">Search</button>
-          </div>
-          <div class="actions">
-            <button class="secondary" id="btn-scan">Scan Lithia Missoula</button>
-            <button class="secondary" id="btn-backfill">Backfill Data</button>
-            <button class="ghost" id="btn-all">Show All Saved</button>
-          </div>
-          <div class="status" id="status"></div>
+      <div class="card">
+        <h2>Inventory Console</h2>
+        <div class="search-row">
+          <input type="text" id="q" placeholder="Search year, make, model, VIN, stock…" />
+          <button id="btn-search">Search</button>
         </div>
+        <div class="actions">
+          <button id="btn-scan">Scan Lithia Missoula</button>
+          <button class="secondary" id="btn-backfill">Backfill Data</button>
+          <button class="ghost" id="btn-all">Show All Saved</button>
+        </div>
+        <div class="status" id="status"></div>
       </div>
 
-      <div class="card" style="animation-delay:.3s">
+      <div class="card">
         <h2>Bay — select a unit</h2>
-        <div id="vehicles">
-          <div class="empty">Search or scan to load inventory</div>
-        </div>
+        <div id="vehicles"><div class="empty">Search or scan to load inventory</div></div>
       </div>
     </div>
 
-    <!-- Report view -->
+    <!-- REPORT VIEW -->
     <div id="report-view">
-      <div class="back-row">
-        <button class="ghost" id="btn-back">← Back to bay</button>
-      </div>
-      <div id="report-body">
-        <div class="card"><div class="empty">Loading…</div></div>
-      </div>
+      <div class="back-row"><button class="ghost" id="btn-back">← Back to bay</button></div>
+      <div id="report-body"><div class="loading-shimmer"></div></div>
     </div>
   </main>
 
-  <script>
-    const $ = (s) => document.querySelector(s);
-    const statusEl = $("#status");
+<script>
+/* ---------------- boot / garage door ---------------- */
+(function boot() {
+  var garage = document.getElementById('garage');
+  if (!garage) return;
+  setTimeout(function () { garage.classList.add('open'); }, 2100);   // sign lingers ~1s longer
+  setTimeout(function () {
+    garage.classList.add('done');
+    document.body.classList.remove('booting');
+  }, 4700);
+  setTimeout(function () { if (garage.parentNode) garage.parentNode.removeChild(garage); }, 5600);
+})();
 
-    /* ---------- Garage door boot ---------- */
-    window.addEventListener("load", () => {
-      setTimeout(() => {
-        const g = $("#garage");
-        g.classList.add("open");
-        setTimeout(() => g.classList.add("done"), 2000);
-        setTimeout(() => g.remove(), 2800);
-      }, 650);
-    });
+/* ---------------- helpers ---------------- */
+var $ = function (id) { return document.getElementById(id); };
+function esc(s) {
+  return String(s === null || s === undefined ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+function money(n) {
+  if (n === null || n === undefined || n === '' || isNaN(Number(n))) return '—';
+  return '$' + Number(n).toLocaleString('en-US', { maximumFractionDigits: 0 });
+}
+function num(n) {
+  if (n === null || n === undefined || n === '' || isNaN(Number(n))) return null;
+  return Number(n).toLocaleString('en-US');
+}
+function setStatus(msg, kind) {
+  var el = $('status');
+  el.textContent = msg || '';
+  el.className = 'status' + (kind ? ' ' + kind : '');
+}
+function busy(btn, on) {
+  if (!btn) return;
+  btn.disabled = !!on;
+  btn.classList.toggle('busy', !!on);
+}
+function ticks(containerId, pct) {
+  var el = $(containerId);
+  if (!el) return;
+  var total = 10, on = Math.max(0, Math.min(total, Math.round((pct || 0) / 10)));
+  var html = '';
+  for (var i = 0; i < total; i++) html += '<i class="' + (i < on ? 'on' : '') + '"></i>';
+  el.innerHTML = html;
+}
+async function getJSON(url, opts) {
+  var res = await fetch(url, opts);
+  var text = await res.text();
+  var data = {};
+  try { data = text ? JSON.parse(text) : {}; } catch (e) { data = { ok: false, error: text.slice(0, 200) }; }
+  if (!res.ok && !data.error) data.error = 'HTTP ' + res.status;
+  data.__status = res.status;
+  return data;
+}
 
-    /* ---------- Ticks decoration ---------- */
-    document.querySelectorAll("[data-ticks]").forEach((el) => {
-      for (let i = 0; i < 12; i++) {
-        const t = document.createElement("i");
-        if (Math.random() > 0.45) t.classList.add("on");
-        el.appendChild(t);
-      }
-    });
-
-    /* ---------- Helpers ---------- */
-    const fmtMoney = (n) =>
-      n == null || isNaN(n) ? "—" : "$" + Number(n).toLocaleString(undefined, { maximumFractionDigits: 0 });
-    const setStatus = (msg, cls = "") => { statusEl.textContent = msg; statusEl.className = "status " + cls; };
-    const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) =>
-      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-
-    async function api(path, opts) {
-      const r = await fetch(path, opts);
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(j.error || ("HTTP " + r.status));
-      return j;
-    }
-
-    /* ---------- Gauges ---------- */
-    function renderGauges(summary) {
-      if (!summary) return;
-      $("#g-units").textContent = summary.units ?? summary.count ?? "—";
-      $("#g-avg").textContent = fmtMoney(summary.avg_price);
-      $("#g-vin").textContent = summary.vin_verified ?? summary.with_vin ?? "—";
-      $("#g-photo").textContent = summary.photographed ?? summary.with_photo ?? "—";
-    }
-
-    /* ---------- Vehicle list ---------- */
-    function renderVehicles(vehicles) {
-      const box = $("#vehicles");
-      if (!vehicles || !vehicles.length) {
-        box.innerHTML = '<div class="empty">No units found</div>';
-        return;
-      }
-      box.innerHTML = vehicles.map((v, i) => `
-        <div class="vehicle" style="animation-delay:${Math.min(i * 0.04, 0.5)}s"
-             tabindex="0" role="button" data-id="${v.id}">
-          <div class="v-main">
-            <div class="title">${esc([v.year, v.make, v.model].filter(Boolean).join(" ")) || "Unknown unit"}${v.trim ? " " + esc(v.trim) : ""}</div>
-            <div class="meta">
-              ${v.condition ? `<span class="tagchip">${esc(v.condition)}</span>` : ""}
-              ${v.stock_number ? `<span class="tagchip">STK ${esc(v.stock_number)}</span>` : ""}
-              ${v.vin ? `<span class="tagchip">VIN ${esc(v.vin)}</span>` : ""}
-              ${v.mileage != null ? `<span class="tagchip">${Number(v.mileage).toLocaleString()} mi</span>` : ""}
-              ${v.exterior_color ? `<span class="tagchip">${esc(v.exterior_color)}</span>` : ""}
-            </div>
-          </div>
-          <div class="price">${fmtMoney(v.price)}</div>
-        </div>`).join("");
-      box.querySelectorAll(".vehicle").forEach((el) => {
-        const open = () => openReport(el.dataset.id);
-        el.addEventListener("click", open);
-        el.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } });
+/* ---------------- scroll reveal ---------------- */
+var revealObserver = null;
+function initReveal(root) {
+  if (!('IntersectionObserver' in window)) {
+    (root || document).querySelectorAll('.reveal, .reveal-stagger').forEach(function (el) { el.classList.add('in'); });
+    return;
+  }
+  if (!revealObserver) {
+    revealObserver = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('in');
+          var kids = entry.target.classList.contains('reveal-stagger')
+            ? entry.target.children : [];
+          for (var i = 0; i < kids.length; i++) {
+            kids[i].style.transitionDelay = (i * 70) + 'ms';
+          }
+          revealObserver.unobserve(entry.target);
+        }
       });
-    }
+    }, { threshold: 0.12, rootMargin: '0px 0px -8% 0px' });
+  }
+  (root || document).querySelectorAll('.reveal, .reveal-stagger').forEach(function (el) {
+    revealObserver.observe(el);
+  });
+}
 
-    async function loadVehicles(params = "") {
-      $("#vehicles").innerHTML = '<div class="loading-shimmer"></div>'.repeat(4);
-      try {
-        const j = await api("/api/vehicles" + params);
-        renderVehicles(j.vehicles);
-        renderGauges(j.summary);
-        setStatus(j.count + " unit(s) on the board", "ok");
-      } catch (e) {
-        $("#vehicles").innerHTML = '<div class="empty">Load failed</div>';
-        setStatus(e.message, "err");
-      }
-    }
+/* ---------------- inventory list ---------------- */
+var currentVehicles = [];
 
-    /* ---------- Report ---------- */
-    function spec(label, value, verify = false) {
-      const show = value == null || value === "" ? "—" : esc(value);
-      return `<div class="spec"><div class="label">${label}</div>
-        <div class="value${verify && (value == null || value === "") ? " verify" : ""}">${verify && (value == null || value === "") ? "Verify" : show}</div></div>`;
-    }
+function renderSummary(summary, vehicles) {
+  summary = summary || {};
+  var list = vehicles || [];
+  var units = summary.total_vehicles || summary.count || list.length || 0;
+  var prices = list.map(function (v) { return Number(v.price); }).filter(function (p) { return p > 0; });
+  var avg = summary.avg_price;
+  if ((avg === null || avg === undefined) && prices.length) {
+    avg = prices.reduce(function (a, b) { return a + b; }, 0) / prices.length;
+  }
+  var vin = list.filter(function (v) { return v.vin; }).length;
+  var pic = list.filter(function (v) { return v.image_url; }).length;
 
-    function renderReport(v, events) {
-      const sb = v.sales_brain || {};
-      const title = [v.year, v.make, v.model].filter(Boolean).join(" ") || "Vehicle";
-      $("#report-body").innerHTML = `
-        <div class="card">
-          <div class="report-hero">
-            <div class="report-photo">
-              ${v.image_url ? `<img src="${esc(v.image_url)}" alt="${esc(title)}" loading="lazy">` : "No photo"}
-            </div>
-            <div style="flex:1;min-width:240px">
-              <div class="report-title">${esc(title)}${v.trim ? " " + esc(v.trim) : ""}</div>
-              <div class="report-price">${fmtMoney(v.price)}</div>
-              <div class="report-sub">${esc(v.condition || "")} ${v.stock_number ? "· STK " + esc(v.stock_number) : ""}</div>
-              <div class="chips">
-                ${v.vin ? `<span class="chip ok">VIN ${esc(v.vin)}</span>` : `<span class="chip warn">No VIN</span>`}
-                ${v.mileage != null ? `<span class="chip">${Number(v.mileage).toLocaleString()} mi</span>` : ""}
-                ${v.dealership_name ? `<span class="chip">${esc(v.dealership_name)}</span>` : ""}
-              </div>
-              ${v.listing_url ? `<p style="margin-top:.8rem"><a class="link" href="${esc(v.listing_url)}" target="_blank" rel="noopener">View dealer listing ↗</a></p>` : ""}
-            </div>
-          </div>
-        </div>
+  $('g-units').textContent = units ? units.toLocaleString('en-US') : '—';
+  $('g-avg').textContent = avg ? money(avg) : '—';
+  $('g-vin').textContent = list.length ? Math.round((vin / list.length) * 100) + '%' : '—';
+  $('g-pic').textContent = list.length ? Math.round((pic / list.length) * 100) + '%' : '—';
 
-        <div class="card">
-          <h2>Specification</h2>
-          <div class="grid2">
-            ${spec("Engine", v.engine)}
-            ${spec("Horsepower", v.engine_hp ? v.engine_hp + " hp" : null)}
-            ${spec("Torque", v.torque)}
-            ${spec("Transmission", v.transmission)}
-            ${spec("Drivetrain", v.drivetrain)}
-            ${spec("Body style", v.body_style)}
-            ${spec("Fuel", v.fuel || (v.nhtsa && v.nhtsa.fuel))}
-            ${spec("Towing", v.towing_capacity)}
-            ${spec("Exterior", v.exterior_color)}
-            ${spec("Interior", v.interior_color)}
-          </div>
-        </div>
+  ticks('t-units', list.length ? 100 : 0);
+  ticks('t-avg', avg ? 70 : 0);
+  ticks('t-vin', list.length ? (vin / list.length) * 100 : 0);
+  ticks('t-pic', list.length ? (pic / list.length) * 100 : 0);
+}
 
-        ${(sb.points && sb.points.length) ? `<div class="card"><h2>Selling Points</h2>${sb.points.map(p => `<div class="bullet">${esc(p)}</div>`).join("")}</div>` : ""}
-        ${sb.pitch ? `<div class="card"><h2>Elevator Pitch</h2><div class="pitch">${esc(sb.pitch)}</div></div>` : ""}
-        ${(sb.objections && sb.objections.length) ? `<div class="card"><h2>Objection Handling</h2>${sb.objections.map(o => `<div class="bullet warn">${esc(o)}</div>`).join("")}</div>` : ""}
-        ${(sb.questions && sb.questions.length) ? `<div class="card"><h2>Ask the Customer</h2>${sb.questions.map(q => `<div class="bullet">${esc(q)}</div>`).join("")}</div>` : ""}
-        ${(events && events.length) ? `<div class="card"><h2>History</h2>${events.map(e => `<div class="bullet">${esc(e.event_type || e.type || "event")} — ${esc(e.created_at || "")}</div>`).join("")}</div>` : ""}
-      `;
-      $("#list-view").style.display = "none";
-      $("#report-view").style.display = "block";
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    }
+function vehicleTitle(v) {
+  return [v.year, v.make, v.model, v.trim].filter(Boolean).join(' ') || ('Vehicle #' + v.id);
+}
 
-    async function openReport(id) {
-      $("#list-view").style.display = "none";
-      $("#report-view").style.display = "block";
-      $("#report-body").innerHTML = '<div class="card"><div class="loading-shimmer"></div><div class="loading-shimmer"></div><div class="loading-shimmer"></div></div>';
-      try {
-        const j = await api("/api/vehicles/" + id);
-        renderReport(j.vehicle, j.events);
-      } catch (e) {
-        $("#report-body").innerHTML = `<div class="card"><div class="empty">Report failed: ${esc(e.message)}</div></div>`;
-      }
-    }
+function renderVehicles(list) {
+  var box = $('vehicles');
+  currentVehicles = list || [];
+  if (!currentVehicles.length) {
+    box.innerHTML = '<div class="empty">No vehicles yet — hit “Scan Lithia Missoula” to pull inventory.</div>';
+    return;
+  }
+  box.innerHTML = currentVehicles.map(function (v, i) {
+    var chips = [];
+    if (v.condition) chips.push(v.condition);
+    if (v.mileage !== null && v.mileage !== undefined && v.mileage !== '') chips.push(num(v.mileage) + ' mi');
+    if (v.stock_number) chips.push('Stock ' + v.stock_number);
+    if (v.vin) chips.push('VIN ' + String(v.vin).slice(-8));
+    if (v.drivetrain) chips.push(v.drivetrain);
+    return '' +
+      '<div class="vehicle" role="button" tabindex="0" data-id="' + esc(v.id) + '" style="animation-delay:' + Math.min(i * 35, 600) + 'ms">' +
+        '<div class="v-main">' +
+          '<div class="title">' + esc(vehicleTitle(v)) + '</div>' +
+          '<div class="meta">' + chips.map(function (c) { return '<span class="tagchip">' + esc(c) + '</span>'; }).join('') + '</div>' +
+        '</div>' +
+        '<div class="price">' + money(v.price) + '</div>' +
+      '</div>';
+  }).join('');
 
-    $("#btn-back").addEventListener("click", () => {
-      $("#report-view").style.display = "none";
-      $("#list-view").style.display = "block";
+  Array.prototype.forEach.call(box.querySelectorAll('.vehicle'), function (el) {
+    var open = function () { openReport(el.getAttribute('data-id')); };
+    el.addEventListener('click', open);
+    el.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); }
     });
+  });
+}
 
-    /* ---------- Actions ---------- */
-    $("#btn-search").addEventListener("click", () => {
-      const q = $("#q").value.trim();
-      loadVehicles(q ? "?q=" + encodeURIComponent(q) : "");
+async function loadVehicles(q) {
+  var box = $('vehicles');
+  box.innerHTML = '<div class="loading-shimmer"></div><div class="loading-shimmer"></div><div class="loading-shimmer"></div>';
+  var url = '/api/vehicles?limit=200' + (q ? '&q=' + encodeURIComponent(q) : '');
+  try {
+    var data = await getJSON(url);
+    var list = data.vehicles || [];
+    renderVehicles(list);
+    renderSummary(data.summary, list);
+    return list.length;
+  } catch (err) {
+    box.innerHTML = '<div class="empty">Could not load vehicles: ' + esc(err.message || err) + '</div>';
+    return 0;
+  }
+}
+
+/* ---------------- actions ---------------- */
+$('btn-search').addEventListener('click', async function () {
+  busy(this, true);
+  setStatus('Searching saved inventory…');
+  var n = await loadVehicles($('q').value.trim());
+  setStatus(n + ' vehicle' + (n === 1 ? '' : 's') + ' found.', n ? 'ok' : null);
+  busy(this, false);
+});
+$('q').addEventListener('keydown', function (e) { if (e.key === 'Enter') $('btn-search').click(); });
+
+$('btn-all').addEventListener('click', async function () {
+  busy(this, true);
+  $('q').value = '';
+  setStatus('Loading everything saved…');
+  var n = await loadVehicles('');
+  setStatus(n + ' vehicles in the database.', n ? 'ok' : null);
+  busy(this, false);
+});
+
+$('btn-scan').addEventListener('click', async function () {
+  var btn = this;
+  busy(btn, true);
+  setStatus('Scanning Lithia Missoula… this can take up to a minute.');
+  var result = {};
+  try {
+    result = await getJSON('/api/scan/lithia-missoula', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ force: true })
     });
-    $("#q").addEventListener("keydown", (e) => { if (e.key === "Enter") $("#btn-search").click(); });
-    $("#btn-all").addEventListener("click", () => { $("#q").value = ""; loadVehicles(); });
+  } catch (err) {
+    result = { ok: false, error: String(err && err.message ? err.message : err) };
+  }
 
-    $("#btn-scan").addEventListener("click", async (e) => {
-      const btn = e.currentTarget;
-      btn.disabled = true; btn.classList.add("busy");
-      setStatus("Scanning Lithia Missoula…");
-      try {
-        const j = await api("/api/discover", {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ inventory_url: "https://www.lithia.com/inventory.htm", name: "Lithia Missoula" }),
-        });
-        setStatus(j.ok ? "Scan complete" : (j.error || "Scan finished"), j.ok ? "ok" : "err");
-        loadVehicles();
-      } catch (err) { setStatus(err.message, "err"); }
-      finally { btn.disabled = false; btn.classList.remove("busy"); }
+  // ALWAYS refresh the list, even if the scan partially failed —
+  // this is what used to leave the bay empty.
+  var n = await loadVehicles('');
+  if (result.ok) {
+    var added = result.vehicles_found || result.added || result.count || n;
+    setStatus('Scan complete — ' + added + ' listings processed, ' + n + ' vehicles in the bay.', 'ok');
+  } else if (n) {
+    setStatus('Scan reported: ' + (result.error || 'unknown issue') + ' — showing ' + n + ' saved vehicles.', 'err');
+  } else {
+    setStatus('Scan failed: ' + (result.error || 'unknown issue'), 'err');
+  }
+  busy(btn, false);
+});
+
+$('btn-backfill').addEventListener('click', async function () {
+  var btn = this;
+  busy(btn, true);
+  setStatus('Backfilling VIN + listing data…');
+  var data = {};
+  try {
+    data = await getJSON('/api/backfill_nhtsa', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ limit: 24 })
     });
+  } catch (err) {
+    data = { ok: false, error: String(err) };
+  }
+  await loadVehicles($('q').value.trim());
+  if (data.ok) {
+    setStatus('Enriched ' + (data.updated || 0) + ' of ' + (data.checked || 0) + ' — ' + (data.remaining || 0) + ' still queued.', 'ok');
+  } else {
+    setStatus('Backfill error: ' + (data.error || 'unknown'), 'err');
+  }
+  busy(btn, false);
+});
 
-    $("#btn-backfill").addEventListener("click", async (e) => {
-      const btn = e.currentTarget;
-      btn.disabled = true; btn.classList.add("busy");
-      setStatus("Backfilling public data…");
-      try {
-        const j = await api("/api/backfill_nhtsa", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
-        setStatus(`Backfill: ${j.updated} updated, ${j.remaining} remaining`, "ok");
-        loadVehicles($("#q").value.trim() ? "?q=" + encodeURIComponent($("#q").value.trim()) : "");
-      } catch (err) { setStatus(err.message, "err"); }
-      finally { btn.disabled = false; btn.classList.remove("busy"); }
-    });
+$('btn-back').addEventListener('click', function () {
+  $('report-view').style.display = 'none';
+  $('list-view').style.display = '';
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+});
 
-    /* ---------- Initial load ---------- */
-    loadVehicles();
-  </script>
+/* ---------------- report ---------------- */
+function specBlock(label, value) {
+  var v = (value === null || value === undefined || value === '') ? 'Verify on listing' : value;
+  var cls = (value === null || value === undefined || value === '') ? ' verify' : '';
+  return '<div class="spec"><div class="label">' + esc(label) + '</div><div class="value' + cls + '">' + esc(v) + '</div></div>';
+}
+
+function renderReport(v, brain) {
+  brain = brain || {};
+  var title = vehicleTitle(v);
+  var photo = v.image_url
+    ? '<img src="' + esc(v.image_url) + '" alt="' + esc(title) + '" />'
+    : 'No photo on file';
+
+  var chips = [];
+  if (v.condition) chips.push('<span class="chip ' + (String(v.condition).toLowerCase() === 'new' ? 'ok' : '') + '">' + esc(v.condition) + '</span>');
+  if (v.vin) chips.push('<span class="chip ok">VIN ' + esc(v.vin) + '</span>');
+  if (v.stock_number) chips.push('<span class="chip">Stock ' + esc(v.stock_number) + '</span>');
+  if (v.mileage !== null && v.mileage !== undefined && v.mileage !== '') chips.push('<span class="chip">' + esc(num(v.mileage)) + ' mi</span>');
+  if (!v.image_url) chips.push('<span class="chip warn">Photo missing</span>');
+
+  function bullets(arr, cls) {
+    if (!arr || !arr.length) return '<div class="empty">Nothing here yet.</div>';
+    return arr.map(function (b) {
+      var text = typeof b === 'string' ? b : (b.text || b.title || JSON.stringify(b));
+      return '<div class="bullet ' + (cls || '') + '">' + esc(text) + '</div>';
+    }).join('');
+  }
+
+  var html = '' +
+  '<div class="card reveal tilt">' +
+    '<div class="report-hero">' +
+      '<div class="report-photo">' + photo + '</div>' +
+      '<div style="flex:1;min-width:240px">' +
+        '<div class="report-title">' + esc(title) + '</div>' +
+        '<div class="report-price">' + money(v.price) + '</div>' +
+        '<div class="report-sub">' + esc([v.body_style, v.drivetrain, v.transmission].filter(Boolean).join(' • ') || 'Specs pending') + '</div>' +
+        '<div class="chips">' + chips.join('') + '</div>' +
+        (v.listing_url ? '<div style="margin-top:.9rem"><a class="link" href="' + esc(v.listing_url) + '" target="_blank" rel="noopener">Open dealer listing ↗</a></div>' : '') +
+      '</div>' +
+    '</div>' +
+  '</div>' +
+
+  '<div class="card reveal from-left sec-glow">' +
+    '<div class="section-title">Vehicle Specs</div>' +
+    '<div class="grid2 reveal-stagger">' +
+      specBlock('Engine', v.engine) +
+      specBlock('Horsepower', v.engine_hp) +
+      specBlock('Torque', v.torque) +
+      specBlock('Transmission', v.transmission) +
+      specBlock('Drivetrain', v.drivetrain) +
+      specBlock('Body style', v.body_style) +
+      specBlock('Towing', v.towing_capacity) +
+      specBlock('Flat tow', v.flat_tow) +
+    '</div>' +
+  '</div>' +
+
+  '<div class="card reveal from-right sec-glow">' +
+    '<div class="section-title">Selling Points</div>' +
+    '<div class="reveal-stagger">' + bullets(brain.points) + '</div>' +
+  '</div>' +
+
+  '<div class="card reveal tilt sec-glow">' +
+    '<div class="section-title">Objection Handling</div>' +
+    '<div class="reveal-stagger">' + bullets(brain.objections, 'warn') + '</div>' +
+  '</div>' +
+
+  '<div class="card reveal from-left sec-glow">' +
+    '<div class="section-title">Comparison</div>' +
+    '<div class="reveal-stagger">' + bullets(brain.competitors) + '</div>' +
+  '</div>' +
+
+  '<div class="card reveal from-right sec-glow">' +
+    '<div class="section-title">Discovery Questions</div>' +
+    '<div class="reveal-stagger">' + bullets(brain.questions) + '</div>' +
+  '</div>' +
+
+  '<div class="card reveal tilt sec-glow">' +
+    '<div class="section-title">Demo Route</div>' +
+    '<div class="reveal-stagger">' + bullets(brain.demo) + '</div>' +
+  '</div>' +
+
+  '<div class="card reveal sec-glow">' +
+    '<div class="section-title">The Pitch</div>' +
+    '<div class="pitch">' + esc(brain.pitch || 'Lead with what the customer told you matters most, then prove it on this exact VIN.') + '</div>' +
+  '</div>';
+
+  $('report-body').innerHTML = html;
+  requestAnimationFrame(function () { initReveal($('report-body')); });
+}
+
+async function openReport(id) {
+  $('list-view').style.display = 'none';
+  $('report-view').style.display = 'block';
+  $('report-body').innerHTML = '<div class="loading-shimmer"></div><div class="loading-shimmer"></div><div class="loading-shimmer"></div>';
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  try {
+    var data = await getJSON('/api/vehicles/' + encodeURIComponent(id));
+    if (!data.vehicle) throw new Error(data.error || 'Vehicle not found');
+    renderReport(data.vehicle, data.vehicle.sales_brain);
+  } catch (err) {
+    $('report-body').innerHTML = '<div class="card"><div class="empty">Could not load this report: ' + esc(err.message || err) + '</div></div>';
+  }
+}
+
+/* ---------------- init ---------------- */
+initReveal(document);
+loadVehicles('').then(function (n) {
+  if (n) setStatus(n + ' vehicles loaded from the database.', 'ok');
+});
+</script>
 </body>
 </html>
 """
@@ -781,6 +903,37 @@ def api_discover():
         return jsonify({"ok": False, "error": "inventory_url is required"}), 400
     result = engine.discover(url, dealership_name=name, force=force)
     return jsonify(result), (200 if result.get("ok") else 400)
+
+
+@app.post("/api/scan/lithia-missoula")
+def api_scan_lithia_missoula():
+    """One-click scan used by the Scan Lithia Missoula button.
+
+    Never 500s on the UI: any scraper failure is returned as JSON so the
+    front end can still fall back to showing whatever is already saved.
+    """
+    data = request.get_json(silent=True) or {}
+    force = bool(data.get("force", True))
+    url = (data.get("inventory_url") or LITHIA_MISSOULA_URL).strip()
+    try:
+        result = engine.discover(url, dealership_name=LITHIA_MISSOULA_NAME, force=force)
+    except Exception as exc:
+        result = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+
+    if not isinstance(result, dict):
+        result = {"ok": True, "result": result}
+    result.setdefault("ok", True)
+    result["inventory_url"] = url
+
+    try:
+        summary = store.inventory_summary(None)
+        result["summary"] = summary
+        result["saved_total"] = (summary or {}).get("total_vehicles")
+    except Exception:
+        pass
+
+    # Always 200 — the UI reads result.ok and refreshes the list either way.
+    return jsonify(result), 200
 
 
 @app.post("/api/backfill_nhtsa")
@@ -855,12 +1008,18 @@ def api_vehicles():
     active_only = request.args.get("active_only", "1") != "0"
     limit = min(request.args.get("limit", 100, type=int), 500)
     offset = request.args.get("offset", 0, type=int)
-    vehicles = store.search_vehicles(
-        dealership_id=dealership_id, q=q, year=year, make=make, model=model,
-        condition=condition, min_price=min_price, max_price=max_price,
-        max_mileage=max_mileage, active_only=active_only, limit=limit, offset=offset,
-    )
-    summary = store.inventory_summary(dealership_id)
+    try:
+        vehicles = store.search_vehicles(
+            dealership_id=dealership_id, q=q, year=year, make=make, model=model,
+            condition=condition, min_price=min_price, max_price=max_price,
+            max_mileage=max_mileage, active_only=active_only, limit=limit, offset=offset,
+        )
+    except Exception as exc:
+        return jsonify({"vehicles": [], "summary": {}, "count": 0, "error": str(exc)}), 200
+    try:
+        summary = store.inventory_summary(dealership_id)
+    except Exception:
+        summary = {}
     return jsonify({"vehicles": vehicles, "summary": summary, "count": len(vehicles)})
 
 
@@ -924,10 +1083,6 @@ def api_vehicle_detail(vehicle_id: int):
             vdp_data = scrape_vdp(vehicle["listing_url"], known_vin=vehicle.get("vin"))
         except Exception:
             vdp_data = {}
-        try:
-            store.fill_vdp_fields(vehicle_id, vdp_data or {})
-        except Exception:
-            pass
         if vdp_data:
             condition_now = str(vdp_data.get("condition") or vehicle.get("condition") or "").strip().lower()
             listing_path = str(vehicle.get("listing_url") or "").lower()
@@ -938,7 +1093,10 @@ def api_vehicle_detail(vehicle_id: int):
                     vdp_data["stock_number"] = vin_text[-8:]
                     vdp_data["condition"] = vdp_data.get("condition") or "New"
 
-            store.fill_vdp_fields(vehicle_id, vdp_data)
+            try:
+                store.fill_vdp_fields(vehicle_id, vdp_data)
+            except Exception:
+                pass
             for f in ("stock_number", "image_url", "mileage", "condition", "torque",
                       "engine_hp", "transmission", "engine", "towing_capacity", "flat_tow"):
                 if vdp_data.get(f) is not None and vdp_data.get(f) != "":
