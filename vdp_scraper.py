@@ -101,7 +101,7 @@ def scrape_vdp(url: str) -> Dict[str, Any]:
     """
     Fetch a vehicle detail page and extract whatever public specs are
     present. Returns a dict containing only the fields it actually found:
-    stock_number, image_url, mileage, condition, torque, towing_capacity, flat_tow.
+    stock_number, image_url, mileage, condition, engine_hp, transmission, engine, torque, towing_capacity, flat_tow.
     """
     out: Dict[str, Any] = {}
     if not url:
@@ -202,6 +202,30 @@ def scrape_vdp(url: str) -> Dict[str, Any]:
                 image = image.get("url")
             if image and not out.get("image_url"):
                 out["image_url"] = str(image)
+
+            # Some dealer pages expose horsepower/transmission/engine as
+            # schema additionalProperty values. Only use explicit values.
+            props = item.get("additionalProperty") or item.get("additionalProperties") or []
+            if isinstance(props, dict):
+                props = [props]
+            for prop in props:
+                if not isinstance(prop, dict):
+                    continue
+                name = str(prop.get("name") or prop.get("propertyID") or "").strip().lower()
+                val = prop.get("value")
+                if isinstance(val, dict):
+                    val = val.get("value") or val.get("name")
+                val = str(val).strip() if val is not None else ""
+                if not val:
+                    continue
+                if ("horsepower" in name or name in {"horse power", "hp"}) and not out.get("engine_hp"):
+                    hp = _clean_int(val)
+                    if hp:
+                        out["engine_hp"] = hp
+                elif "transmission" in name and not out.get("transmission"):
+                    out["transmission"] = val
+                elif name == "engine" and not out.get("engine"):
+                    out["engine"] = val
 
     # --- 2) og:image meta fallback for photo ---
     if not out.get("image_url"):
@@ -306,7 +330,48 @@ def scrape_vdp(url: str) -> Dict[str, Any]:
             if out.get("stock_number") and out.get("mileage") is not None:
                 break
 
-    # --- 6) Spec-sheet scan for stock #, mileage, torque, towing, flat-tow ---
+    # --- 6) Public powertrain fields from the VDP ---
+    # Dealer.com/Lithia pages vary in markup, so first look for explicit
+    # labeled values in visible text/HTML. These are factory/model specs, not
+    # aftermarket add-ons.
+    if not out.get("engine_hp"):
+        hp_patterns = [
+            r'(?i)\b(?:horsepower|horse\s+power)\s*[:#-]?\s*([0-9]{2,4})\s*(?:hp|horsepower)?\b',
+            r'(?i)\b([0-9]{2,4})\s*hp\b',
+        ]
+        for pat in hp_patterns:
+            m = re.search(pat, text)
+            if m:
+                hp = _clean_int(m.group(1))
+                if hp and 50 <= hp <= 1200:
+                    out["engine_hp"] = hp
+                    break
+
+    if not out.get("transmission"):
+        tx_patterns = [
+            r'(?i)\btransmission\s*[:#-]?\s*([^|;,]{3,80}?)(?=\s{2,}|\b(?:drive|drivetrain|fuel|engine|horsepower|torque)\b|$)',
+        ]
+        for pat in tx_patterns:
+            m = re.search(pat, text)
+            if m:
+                val = re.sub(r'\s+', ' ', m.group(1)).strip(' .:-')
+                if val and len(val) <= 80:
+                    out["transmission"] = val
+                    break
+
+    if not out.get("engine"):
+        engine_patterns = [
+            r'(?i)\bengine\s*[:#-]?\s*([^|;,]{3,100}?)(?=\s{2,}|\b(?:transmission|drivetrain|horsepower|torque)\b|$)',
+        ]
+        for pat in engine_patterns:
+            m = re.search(pat, text)
+            if m:
+                val = re.sub(r'\s+', ' ', m.group(1)).strip(' .:-')
+                if val and len(val) <= 100:
+                    out["engine"] = val
+                    break
+
+    # --- 7) Spec-sheet scan for stock #, mileage, powertrain, torque, towing, flat-tow ---
     for label, value in _label_value_pairs(soup).items():
         if not value:
             continue
@@ -317,6 +382,14 @@ def scrape_vdp(url: str) -> Dict[str, Any]:
             m = _clean_int(value)
             if m:
                 out["mileage"] = m
+        elif ("horsepower" in low or "horse power" in low or low == "hp") and not out.get("engine_hp"):
+            hp = _clean_int(value)
+            if hp and 50 <= hp <= 1200:
+                out["engine_hp"] = hp
+        elif "transmission" in low and not out.get("transmission"):
+            out["transmission"] = value.strip()
+        elif low == "engine" and not out.get("engine"):
+            out["engine"] = value.strip()
         elif "torque" in low and not out.get("torque"):
             out["torque"] = value.strip()
         elif "flat" in low and "tow" in low and not out.get("flat_tow"):
